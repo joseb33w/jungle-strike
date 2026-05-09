@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Jungle Strike — FPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- AUTH SCREEN -->
+  <section id="authScreen" class="screen active">
+    <div class="auth-card">
+      <div class="brand">
+        <div class="brand-mark">🌴</div>
+        <div>
+          <p class="eyebrow">Tactical Jungle Ops</p>
+          <h1>JUNGLE STRIKE</h1>
+        </div>
+      </div>
+      <p class="lede">Sign in to deploy. Earn coins from kills, gear up at the armory, and run missions or join a multiplayer world.</p>
+      <div class="tabs">
+        <button class="tab active" data-tab="signin">Sign In</button>
+        <button class="tab" data-tab="signup">Create Account</button>
+      </div>
+      <form id="authForm" class="auth-form" autocomplete="off">
+        <label>
+          <span>Email</span>
+          <input type="email" id="authEmail" required />
+        </label>
+        <label id="usernameField" hidden>
+          <span>Callsign</span>
+          <input type="text" id="authUsername" maxlength="16" />
+        </label>
+        <label>
+          <span>Password</span>
+          <input type="password" id="authPassword" required minlength="6" />
+        </label>
+        <button type="submit" id="authSubmit" class="primary-btn">Deploy</button>
+        <p id="authMessage" class="auth-msg"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="lobbyScreen" class="screen">
+    <header class="lobby-header">
+      <div class="brand small">
+        <div class="brand-mark">🌴</div>
+        <div>
+          <p class="eyebrow">Operative Dashboard</p>
+          <h2 id="lobbyHello">Welcome</h2>
+        </div>
+      </div>
+      <div class="hud-stats">
+        <div class="stat"><span>Coins</span><strong id="lobbyCoins">0</strong></div>
+        <div class="stat"><span>Kills</span><strong id="lobbyKills">0</strong></div>
+        <div class="stat"><span>Missions</span><strong id="lobbyMissions">0</strong></div>
+        <button id="logoutBtn" class="ghost-btn">Logout</button>
+      </div>
+    </header>
+
+    <nav class="lobby-tabs">
+      <button class="lobby-tab active" data-pane="missions">Missions</button>
+      <button class="lobby-tab" data-pane="world">World</button>
+      <button class="lobby-tab" data-pane="armory">Armory</button>
+    </nav>
+
+    <main class="lobby-main">
+      <section id="missionsPane" class="pane active">
+        <h3 class="pane-title">Choose Mission</h3>
+        <div id="missionGrid" class="mission-grid"></div>
+      </section>
+
+      <section id="worldPane" class="pane">
+        <h3 class="pane-title">Multiplayer World</h3>
+        <p class="pane-sub">Drop into a shared jungle and battle live operatives. Invite a friend by their callsign.</p>
+        <div class="world-controls">
+          <button id="enterWorldBtn" class="primary-btn">Enter World</button>
+          <div class="invite-row">
+            <input id="inviteUser" placeholder="Friend callsign" maxlength="16" />
+            <button id="sendInviteBtn" class="secondary-btn">Send Invite</button>
+          </div>
+        </div>
+        <div class="invites-block">
+          <h4>Incoming Invites</h4>
+          <div id="invitesList" class="invites-list"><p class="empty">No pending invites.</p></div>
+        </div>
+        <div class="invites-block">
+          <h4>Online Now</h4>
+          <div id="onlineList" class="online-list"><p class="empty">Nobody online.</p></div>
+        </div>
+      </section>
+
+      <section id="armoryPane" class="pane">
+        <h3 class="pane-title">Armory</h3>
+        <p class="pane-sub">Spend coins on heavier ordnance. Equipped weapon deploys to every mission and the world.</p>
+        <div id="armoryGrid" class="armory-grid"></div>
+      </section>
+    </main>
+  </section>
+
+  <!-- GAME -->
+  <section id="gameScreen" class="screen">
+    <canvas id="gameCanvas"></canvas>
+    <div id="crosshair" class="crosshair">+</div>
+
+    <div class="game-hud">
+      <div class="hud-left">
+        <div class="hud-block">
+          <span>Health</span>
+          <div class="bar"><div id="healthBar" class="bar-fill health"></div></div>
+        </div>
+        <div class="hud-block">
+          <span>Ammo</span>
+          <strong id="ammoText">12 / 36</strong>
+        </div>
+      </div>
+      <div class="hud-center">
+        <span id="missionTitle">Mission</span>
+        <strong id="missionObjective">Eliminate all targets</strong>
+      </div>
+      <div class="hud-right">
+        <div class="hud-block">
+          <span>Kills</span>
+          <strong id="killsText">0</strong>
+        </div>
+        <div class="hud-block">
+          <span>Coins</span>
+          <strong id="gameCoins">0</strong>
+        </div>
+        <button id="exitGameBtn" class="ghost-btn small">Exit</button>
+      </div>
+    </div>
+
+    <!-- mobile controls -->
+    <div id="mobileControls" class="mobile-controls">
+      <div id="moveStick" class="stick"><div class="stick-knob"></div></div>
+      <div class="touch-buttons">
+        <button id="lookLeftBtn" class="tbtn">◀</button>
+        <button id="lookRightBtn" class="tbtn">▶</button>
+        <button id="reloadTBtn" class="tbtn small">R</button>
+        <button id="fireBtn" class="tbtn fire">🔥</button>
+      </div>
+    </div>
+
+    <div id="killFeed" class="kill-feed"></div>
+
+    <div id="hitFlash" class="hit-flash"></div>
+
+    <div id="gameOverlay" class="game-overlay hidden">
+      <div class="overlay-card">
+        <h2 id="overlayTitle">Mission Complete</h2>
+        <p id="overlaySub">Outstanding work, operative.</p>
+        <div class="result-stats">
+          <div><span>Kills</span><strong id="resKills">0</strong></div>
+          <div><span>Coins</span><strong id="resCoins">0</strong></div>
+          <div><span>Time</span><strong id="resTime">0s</strong></div>
+        </div>
+        <button id="overlayBack" class="primary-btn">Return to Base</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- INVITE TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
