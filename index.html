@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="styles.css?v=8" />
 <style>
   html, body { background: #06180c; }
   body::before {
@@ -18,9 +18,29 @@
     z-index: -10;
     pointer-events: none;
   }
+  /* Boot status banner — only visible if something is wrong */
+  #bootBanner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 9999;
+    padding: 10px 14px;
+    background: #f0b020;
+    color: #0a1f10;
+    font-family: 'Rajdhani', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-align: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    display: none;
+  }
+  #bootBanner.show { display: block; }
+  #bootBanner.error { background: #ff5970; color: #fff; }
 </style>
 </head>
 <body>
+  <!-- Boot status / error banner -->
+  <div id="bootBanner" role="status" aria-live="polite"></div>
+
   <!-- AUTH SCREEN -->
   <section id="authScreen" class="screen active">
     <div class="auth-bg" aria-hidden="true">
@@ -221,36 +241,147 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js"></script>
+
+  <!-- ===================================================
+       PRE-MODULE BOOT SCRIPT — runs synchronously, BEFORE
+       any ES module. Guarantees the Sign In button does
+       SOMETHING when clicked, even if modules fail to load.
+       =================================================== -->
   <script>
-    // Strip stray text nodes that the preview wrapper may inject directly into
-    // <html> or <body>. We ONLY remove direct text-node children — never touch
-    // anything inside our auth form, so message rendering is safe.
-    (function cleanStrayNodes(){
+  (function preBoot(){
+    var BOOT_VERSION = 9;
+    window.__JUNGLE_BOOT = { version: BOOT_VERSION, moduleReady: false, lastClickAt: 0 };
+
+    function setBanner(text, kind) {
+      var b = document.getElementById('bootBanner');
+      if (!b) return;
+      if (!text) { b.classList.remove('show','error'); b.textContent=''; return; }
+      b.textContent = text;
+      b.classList.add('show');
+      if (kind === 'error') b.classList.add('error');
+      else b.classList.remove('error');
+    }
+
+    function showAuthMessage(text, kind) {
+      var el = document.getElementById('authMessage');
+      if (!el) return;
+      el.className = 'auth-msg ' + (kind || 'info');
+      el.textContent = text;
+      el.style.display = 'block';
+      el.style.visibility = 'visible';
+      el.style.opacity = '1';
+    }
+
+    // Strip stray text nodes that the preview wrapper may inject
+    function cleanStrayNodes() {
       try {
-        const cleanDirectTextChildren = (root) => {
+        var roots = [document.documentElement, document.body];
+        roots.forEach(function(root){
           if (!root) return;
-          const toRemove = [];
-          for (const node of root.childNodes) {
-            if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
-              toRemove.push(node);
+          var toRemove = [];
+          for (var i=0; i<root.childNodes.length; i++) {
+            var n = root.childNodes[i];
+            if (n.nodeType === 3 /* TEXT_NODE */ && n.textContent.trim()) {
+              toRemove.push(n);
             }
           }
-          toRemove.forEach(n => n.remove());
-        };
-        cleanDirectTextChildren(document.documentElement);
-        cleanDirectTextChildren(document.body);
-      } catch (e) { /* no-op */ }
-    })();
+          toRemove.forEach(function(n){ n.remove(); });
+        });
+      } catch(e) {}
+    }
+    cleanStrayNodes();
+    // Run again after DOM ready in case more nodes get injected
+    document.addEventListener('DOMContentLoaded', cleanStrayNodes);
+
+    // Wire submit handler IMMEDIATELY — does not depend on modules.
+    // If modules load, they'll register a real handler; this one defers to it.
+    function setupFallbackSubmit() {
+      var form = document.getElementById('authForm');
+      var btn = document.getElementById('authSubmit');
+      if (!form || !btn) return;
+
+      function handleClick(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.__JUNGLE_BOOT.lastClickAt = Date.now();
+
+        // Visual confirmation that the click registered, no matter what
+        var label = btn.querySelector('.btn-label');
+        if (label) {
+          var orig = label.textContent;
+          label.textContent = 'Working…';
+          setTimeout(function(){
+            if (label.textContent === 'Working…') label.textContent = orig;
+          }, 400);
+        }
+
+        // If modules loaded, let the module-level handler do its job
+        if (window.__JUNGLE_BOOT.moduleReady && typeof window.__jungleHandleAuthSubmit === 'function') {
+          try { window.__jungleHandleAuthSubmit(); }
+          catch (err) { showAuthMessage('Submit error: ' + (err && err.message || err), 'error'); }
+          return;
+        }
+
+        // Modules NOT ready — show a clear error so the user is never left guessing
+        showAuthMessage('App is still loading. If this message stays, refresh the page (Ctrl+Shift+R / Cmd+Shift+R).', 'error');
+        setBanner('Game scripts still loading — please wait or hard refresh.', 'error');
+      }
+
+      form.addEventListener('submit', handleClick);
+      btn.addEventListener('click', handleClick);
+
+      // Enter key on inputs
+      ['authEmail','authPassword','authUsername'].forEach(function(id){
+        var inp = document.getElementById(id);
+        if (!inp) return;
+        inp.addEventListener('keydown', function(ev){
+          if (ev.key === 'Enter') { ev.preventDefault(); handleClick(ev); }
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupFallbackSubmit);
+    } else {
+      setupFallbackSubmit();
+    }
+
+    // Module-load watchdog: if modules haven't reported ready in 8s, show a banner.
+    setTimeout(function(){
+      if (!window.__JUNGLE_BOOT.moduleReady) {
+        setBanner('⚠️ Game scripts failed to load. Hard refresh: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac).', 'error');
+        showAuthMessage('Scripts didn\u2019t load. Hard refresh the page (Ctrl+Shift+R or Cmd+Shift+R) to fix.', 'error');
+      }
+    }, 8000);
+
+    // Catch any uncaught module errors and surface them visibly
+    window.addEventListener('error', function(e){
+      if (e && e.filename && /\/js\//.test(e.filename)) {
+        setBanner('Script error: ' + (e.message || 'unknown') + ' — hard refresh the page.', 'error');
+      }
+    });
+    window.addEventListener('unhandledrejection', function(e){
+      var msg = (e && e.reason && (e.reason.message || e.reason)) || 'unknown error';
+      console.error('[unhandledrejection]', e);
+      // Only show as banner if it looks like a script-load issue, not a normal API error
+      if (typeof msg === 'string' && /import|module|fetch|network/i.test(msg)) {
+        setBanner('Load error: ' + msg + ' — hard refresh the page.', 'error');
+      }
+    });
 
     // Password toggle
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', function(e) {
       if (e.target && e.target.id === 'togglePwd') {
-        const input = document.getElementById('authPassword');
+        var input = document.getElementById('authPassword');
+        if (!input) return;
         if (input.type === 'password') { input.type = 'text'; e.target.textContent = '🙈'; }
         else { input.type = 'password'; e.target.textContent = '👁'; }
       }
     });
+  })();
   </script>
+
+  <!-- Module entry — cache-busted with version query string -->
+  <script type="module" src="js/app.js?v=9"></script>
 </body>
 </html>
