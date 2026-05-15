@@ -17,7 +17,6 @@ import { startMission, startWorld } from './game.js';
     });
 
     const user = await Auth.init();
-    // Enter the app as long as we have a user — profile loads in the background
     if (user) {
       enterApp();
     } else {
@@ -35,6 +34,13 @@ function enterApp() {
   refreshLobby();
 }
 
+function setMessage(text, kind) {
+  const el = document.getElementById('authMessage');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'auth-msg' + (kind ? ' ' + kind : '');
+}
+
 function setupAuthUI() {
   const tabs = document.querySelectorAll('#authScreen .tab');
   const usernameField = document.getElementById('usernameField');
@@ -47,8 +53,11 @@ function setupAuthUI() {
       t.classList.add('active');
       mode = t.dataset.tab;
       usernameField.hidden = mode !== 'signup';
-      submitBtn.textContent = mode === 'signin' ? 'Deploy' : 'Enlist';
-      document.getElementById('authMessage').textContent = '';
+      // Also toggle required on the username input itself
+      const userInput = document.getElementById('authUsername');
+      if (userInput) userInput.required = (mode === 'signup');
+      submitBtn.textContent = mode === 'signin' ? 'Sign In' : 'Create Account';
+      setMessage('');
     });
   });
 
@@ -57,34 +66,41 @@ function setupAuthUI() {
     const email = document.getElementById('authEmail').value.trim();
     const pw = document.getElementById('authPassword').value;
     const username = document.getElementById('authUsername').value.trim();
-    const msg = document.getElementById('authMessage');
     const submit = document.getElementById('authSubmit');
-    msg.textContent = mode === 'signin' ? 'Authenticating…' : 'Creating account…';
+
+    // Basic client-side checks with friendly text
+    if (!email) { setMessage('Please enter your email.', 'error'); return; }
+    if (!pw) { setMessage('Please enter your password.', 'error'); return; }
+    if (pw.length < 6) { setMessage('Password must be at least 6 characters.', 'error'); return; }
+    if (mode === 'signup' && !username) { setMessage('Please choose a callsign.', 'error'); return; }
+
+    setMessage(mode === 'signin' ? 'Signing you in…' : 'Creating your account…', 'info');
     submit.disabled = true;
+
     try {
       if (mode === 'signin') {
         await Auth.signIn(email, pw);
-        // If we got here, auth worked — enter the app no matter what
         if (Auth.user) {
-          msg.textContent = '';
+          setMessage('');
           enterApp();
         } else {
-          msg.textContent = 'Login failed: no user returned.';
+          setMessage('Could not sign you in. Please try again.', 'error');
         }
       } else {
-        if (!username) throw new Error('Choose a callsign.');
-        await Auth.signUp(email, pw, username);
-        if (Auth.user) {
-          msg.textContent = '';
+        const res = await Auth.signUp(email, pw, username);
+        if (Auth.user && res?.session) {
+          // Signed up AND auto-signed-in
+          setMessage('');
           enterApp();
+        } else if (Auth.user && !res?.session) {
+          // Email confirmation required
+          setMessage('Account created! Check your email to confirm, then sign in.', 'success');
         } else {
-          msg.textContent = 'Account created! Check your email to confirm, then sign in.';
+          setMessage('Account created. Please sign in.', 'success');
         }
       }
     } catch (err) {
-      // Show the REAL Supabase error so the user knows what's wrong
-      const text = err?.message || 'Something went wrong.';
-      msg.textContent = text;
+      setMessage(err?.message || 'Something went wrong. Please try again.', 'error');
       console.error('Auth submit error:', err);
     } finally {
       submit.disabled = false;
