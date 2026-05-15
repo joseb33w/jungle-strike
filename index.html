@@ -6,41 +6,66 @@
 <title>Jungle Strike — FPS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <!-- AUTH SCREEN -->
   <section id="authScreen" class="screen active">
-    <div class="auth-card">
-      <div class="brand">
-        <div class="brand-mark">🌴</div>
-        <div>
-          <p class="eyebrow">Tactical Jungle Ops</p>
-          <h1>JUNGLE STRIKE</h1>
+    <!-- decorative backdrop -->
+    <div class="auth-bg" aria-hidden="true">
+      <div class="auth-bg-blob blob-1"></div>
+      <div class="auth-bg-blob blob-2"></div>
+      <div class="auth-bg-blob blob-3"></div>
+      <div class="auth-bg-grid"></div>
+    </div>
+
+    <div class="auth-shell">
+      <div class="auth-hero">
+        <div class="auth-logo">🌴</div>
+        <p class="auth-eyebrow">Tactical Jungle Ops</p>
+        <h1 class="auth-title">JUNGLE STRIKE</h1>
+        <p class="auth-tagline">Deploy into the canopy. Take down warlords. Build your arsenal.</p>
+        <ul class="auth-features">
+          <li><span class="dot"></span>Story missions with distinct worlds</li>
+          <li><span class="dot"></span>Live multiplayer combat zone</li>
+          <li><span class="dot"></span>Earn coins · unlock weapons</li>
+        </ul>
+      </div>
+
+      <div class="auth-card">
+        <div class="auth-card-head">
+          <h2>Welcome, operative</h2>
+          <p>Sign in to your callsign or create a new one.</p>
         </div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="signin">Sign In</button>
+          <button class="tab" data-tab="signup">Create Account</button>
+        </div>
+
+        <form id="authForm" class="auth-form" autocomplete="off" novalidate>
+          <label class="field">
+            <span class="field-label">Email</span>
+            <input type="email" id="authEmail" placeholder="you@example.com" required autocomplete="email" />
+          </label>
+
+          <label id="usernameField" class="field" hidden>
+            <span class="field-label">Callsign</span>
+            <input type="text" id="authUsername" placeholder="Your in-game name" maxlength="16" autocomplete="username" />
+          </label>
+
+          <label class="field">
+            <span class="field-label">Password</span>
+            <input type="password" id="authPassword" placeholder="At least 6 characters" required minlength="6" autocomplete="current-password" />
+          </label>
+
+          <button type="submit" id="authSubmit" class="primary-btn auth-submit">Sign In</button>
+          <p id="authMessage" class="auth-msg" role="status" aria-live="polite"></p>
+        </form>
+
+        <p class="auth-foot">By continuing you agree to play fair. No cheats, recruit.</p>
       </div>
-      <p class="lede">Sign in to deploy. Earn coins from kills, gear up at the armory, and run missions or join a multiplayer world.</p>
-      <div class="tabs">
-        <button class="tab active" data-tab="signin">Sign In</button>
-        <button class="tab" data-tab="signup">Create Account</button>
-      </div>
-      <form id="authForm" class="auth-form" autocomplete="off">
-        <label>
-          <span>Email</span>
-          <input type="email" id="authEmail" required />
-        </label>
-        <label id="usernameField" hidden>
-          <span>Callsign</span>
-          <input type="text" id="authUsername" maxlength="16" />
-        </label>
-        <label>
-          <span>Password</span>
-          <input type="password" id="authPassword" required minlength="6" />
-        </label>
-        <button type="submit" id="authSubmit" class="primary-btn">Deploy</button>
-        <p id="authMessage" class="auth-msg"></p>
-      </form>
     </div>
   </section>
 
