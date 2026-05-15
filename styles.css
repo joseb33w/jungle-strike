@@ -36,20 +36,268 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 }
 .screen.active { display: block; }
 
-/* ----- AUTH ----- */
-#authScreen { display: none; place-items: center; padding: 24px; }
-#authScreen.active { display: grid; }
-
-.auth-card {
-  width: min(440px, 100%);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  padding: 28px;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(14px);
+/* ============================================================
+   AUTH SCREEN — polished split layout with hero + card
+   ============================================================ */
+#authScreen { display: none; }
+#authScreen.active {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  position: relative;
 }
 
+.auth-bg {
+  position: absolute; inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.auth-bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.55;
+}
+.blob-1 {
+  width: 480px; height: 480px;
+  background: radial-gradient(circle, #2b6b3f 0%, transparent 70%);
+  top: -120px; left: -120px;
+  animation: blobFloat 14s ease-in-out infinite;
+}
+.blob-2 {
+  width: 420px; height: 420px;
+  background: radial-gradient(circle, #c8ff5d 0%, transparent 70%);
+  bottom: -100px; right: -100px;
+  animation: blobFloat 18s ease-in-out infinite reverse;
+}
+.blob-3 {
+  width: 360px; height: 360px;
+  background: radial-gradient(circle, #ff7a3d 0%, transparent 70%);
+  top: 40%; left: 55%;
+  opacity: 0.32;
+  animation: blobFloat 22s ease-in-out infinite;
+}
+@keyframes blobFloat {
+  0%, 100% { transform: translate(0,0) scale(1); }
+  50% { transform: translate(30px, -20px) scale(1.08); }
+}
+.auth-bg-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(200,255,93,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200,255,93,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+
+.auth-shell {
+  position: relative;
+  z-index: 1;
+  width: min(960px, 100%);
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 32px;
+  align-items: center;
+}
+
+.auth-hero {
+  padding: 12px 8px;
+}
+.auth-logo {
+  width: 78px; height: 78px;
+  border-radius: 22px;
+  display: grid; place-items: center;
+  font-size: 42px;
+  background: linear-gradient(135deg, var(--accent), var(--jungle-light));
+  box-shadow: 0 14px 40px rgba(200,255,93,0.30), inset 0 0 30px rgba(0,0,0,0.15);
+  margin-bottom: 22px;
+}
+.auth-eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.74rem;
+  color: var(--accent);
+  font-weight: 700;
+}
+.auth-title {
+  font-family: 'Black Ops One', sans-serif;
+  margin: 6px 0 14px;
+  font-size: clamp(2.2rem, 5vw, 3.2rem);
+  line-height: 1;
+  letter-spacing: 0.03em;
+  background: linear-gradient(135deg, #f3eddc 0%, #c8ff5d 60%, #ffc857 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.auth-tagline {
+  margin: 0 0 22px;
+  color: rgba(243, 237, 220, 0.75);
+  font-size: 1.02rem;
+  line-height: 1.55;
+  max-width: 420px;
+}
+.auth-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.auth-features li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgba(243, 237, 220, 0.85);
+  font-size: 0.96rem;
+}
+.auth-features .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(200,255,93,0.7);
+  flex-shrink: 0;
+}
+
+.auth-card {
+  background: rgba(8, 18, 12, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 30px;
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.auth-card-head { margin-bottom: 18px; }
+.auth-card-head h2 {
+  font-family: 'Black Ops One', sans-serif;
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+  letter-spacing: 0.04em;
+  color: var(--bone);
+}
+.auth-card-head p {
+  margin: 0;
+  color: rgba(243, 237, 220, 0.65);
+  font-size: 0.95rem;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0 0 18px;
+  padding: 5px;
+  background: rgba(0,0,0,0.32);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.tab {
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 700;
+  font-size: 0.94rem;
+  letter-spacing: 0.04em;
+  color: rgba(243,237,220,0.55);
+  transition: background 180ms ease, color 180ms ease, transform 120ms ease;
+}
+.tab:hover { color: rgba(243,237,220,0.85); }
+.tab.active {
+  background: linear-gradient(135deg, var(--accent), #7fd14a);
+  color: #07140a;
+  box-shadow: 0 6px 18px rgba(200,255,93,0.25);
+}
+
+.auth-form { display: grid; gap: 14px; }
+.field { display: grid; gap: 6px; }
+.field-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: rgba(200, 255, 93, 0.85);
+  font-weight: 700;
+}
+.field input {
+  background: rgba(0,0,0,0.38);
+  border: 1.5px solid rgba(200,255,93,0.16);
+  border-radius: 12px;
+  padding: 13px 14px;
+  font-size: 1rem;
+  color: var(--bone);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.field input::placeholder { color: rgba(243,237,220,0.35); }
+.field input:hover { border-color: rgba(200,255,93,0.32); }
+.field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(0,0,0,0.55);
+  box-shadow: 0 0 0 4px rgba(200,255,93,0.14);
+}
+
+.auth-submit {
+  margin-top: 4px;
+  padding: 14px 18px;
+  font-size: 1.02rem;
+  border-radius: 14px;
+}
+
+.auth-msg {
+  margin: 4px 0 0;
+  min-height: 1.2em;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-align: center;
+  display: none;
+}
+.auth-msg:not(:empty) { display: block; }
+.auth-msg.info {
+  background: rgba(200,255,93,0.08);
+  border: 1px solid rgba(200,255,93,0.18);
+  color: var(--accent);
+}
+.auth-msg.success {
+  background: rgba(127,209,74,0.12);
+  border: 1px solid rgba(127,209,74,0.3);
+  color: #b6f08a;
+}
+.auth-msg.error {
+  background: rgba(255,77,94,0.12);
+  border: 1px solid rgba(255,77,94,0.3);
+  color: #ff9aa3;
+}
+
+.auth-foot {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 0.82rem;
+  color: rgba(243,237,220,0.4);
+}
+
+@media (max-width: 760px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+    max-width: 460px;
+    gap: 18px;
+  }
+  .auth-hero { text-align: center; padding: 0; }
+  .auth-logo { margin: 0 auto 16px; }
+  .auth-tagline { margin-left: auto; margin-right: auto; }
+  .auth-features { max-width: 320px; margin: 0 auto; text-align: left; }
+}
+
+/* ============================================================
+   LOBBY (unchanged)
+   ============================================================ */
 .brand { display: flex; gap: 14px; align-items: center; }
 .brand.small .brand-mark { width: 46px; height: 46px; font-size: 24px; }
 .brand-mark {
@@ -70,37 +318,6 @@ h1 {
   color: var(--bone);
 }
 h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; }
-.lede { color: rgba(243,237,220,0.75); line-height: 1.5; margin: 18px 0 10px; }
-
-.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 18px 0 14px; }
-.tab {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px;
-  font-weight: 700;
-  color: rgba(243,237,220,0.65);
-}
-.tab.active {
-  background: linear-gradient(135deg, var(--accent), var(--jungle-light));
-  color: #07140a;
-  border-color: transparent;
-}
-
-.auth-form { display: grid; gap: 12px; }
-.auth-form label { display: grid; gap: 6px; }
-.auth-form span {
-  font-size: 0.78rem; text-transform: uppercase;
-  letter-spacing: 0.14em; color: var(--accent);
-}
-.auth-form input {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-size: 1rem;
-}
-.auth-form input:focus { outline: 2px solid var(--accent); }
 
 .primary-btn, .secondary-btn, .ghost-btn {
   border-radius: 14px;
@@ -110,20 +327,20 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; }
   font-size: 1rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  transition: transform 120ms ease, filter 120ms ease;
+  transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
 }
 .primary-btn {
   background: linear-gradient(135deg, var(--accent), #7fd14a);
   color: #07140a;
+  box-shadow: 0 8px 24px rgba(200,255,93,0.22);
 }
 .secondary-btn { background: rgba(200,255,93,0.16); color: var(--accent); border-color: var(--border); }
 .ghost-btn { background: rgba(255,255,255,0.05); border-color: var(--border); color: var(--bone); }
 .ghost-btn.small { padding: 8px 12px; font-size: 0.82rem; }
 .primary-btn:hover, .secondary-btn:hover, .ghost-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.primary-btn:active { transform: translateY(0) scale(0.98); }
+.primary-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; filter: grayscale(0.3); }
 
-.auth-msg { margin: 0; min-height: 1em; font-size: 0.9rem; color: var(--gold); }
-
-/* ----- LOBBY ----- */
 #lobbyScreen { padding: 18px; overflow-y: auto; }
 .lobby-header {
   display: flex; flex-wrap: wrap; gap: 16px;
@@ -261,7 +478,9 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; }
 .btn-locked { background: rgba(255,77,94,0.2); color: var(--danger); border: 1px solid var(--danger); }
 .weapon-actions button:disabled { opacity: 0.7; cursor: not-allowed; }
 
-/* ----- GAME ----- */
+/* ============================================================
+   GAME (unchanged)
+   ============================================================ */
 #gameScreen { background: #000; }
 #gameCanvas { display: block; width: 100%; height: 100%; cursor: none; }
 
@@ -362,7 +581,6 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; }
     align-items: flex-end;
     z-index: 5;
     pointer-events: none;
-    /* Block iOS long-press selection, magnifier, copy/paste */
     -webkit-touch-callout: none !important;
     -webkit-user-select: none !important;
     user-select: none !important;
