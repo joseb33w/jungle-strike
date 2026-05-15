@@ -50,7 +50,7 @@ export function hideLobby() {
 export function refreshLobby() {
   const p = Auth.profile;
   if (!p) return;
-  document.getElementById('lobbyHello').textContent = `Agent ${p.username}`;
+  document.getElementById('lobbyHello').textContent = `Welcome, ${p.username}`;
   document.getElementById('lobbyCoins').textContent = p.coins;
   document.getElementById('lobbyKills').textContent = p.kills_total;
   document.getElementById('lobbyMissions').textContent = p.missions_completed;
@@ -227,11 +227,11 @@ async function fetchInvites() {
 async function sendInvite() {
   const input = document.getElementById('inviteUser');
   const target = (input.value || '').trim();
-  if (!target) return showToast('Enter a callsign.');
+  if (!target) return showToast('Enter a username.');
   if (target === Auth.profile.username) return showToast("You can't invite yourself.");
   const { data: target_p } = await supabase
     .from(TABLES.profiles).select('username').eq('username', target).maybeSingle();
-  if (!target_p) return showToast('Callsign not found.');
+  if (!target_p) return showToast('Username not found.');
   await supabase.from(TABLES.worldInvites).insert({
     from_username: Auth.profile.username,
     to_username: target,
