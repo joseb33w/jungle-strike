@@ -270,7 +270,6 @@ html, body, .screen, .scrollable {
   background: linear-gradient(135deg, #e8ff8a, #c8f060);
   box-shadow: 0 4px 14px rgba(200,255,93,0.45);
 }
-/* Hide the old separate indicator — the active tab IS the indicator now */
 .tab-indicator { display: none; }
 
 /* ============================================================
@@ -366,7 +365,7 @@ html, body, .screen, .scrollable {
 .pwd-toggle:hover { opacity: 1; }
 
 /* ============================================================
-   SUBMIT BUTTON — solid lime, dark text, no chance of dim render
+   SUBMIT BUTTON — solid lime, dark text
    ============================================================ */
 .auth-submit {
   margin-top: 8px;
@@ -415,8 +414,7 @@ html, body, .screen, .scrollable {
 .auth-submit:hover .btn-arrow { transform: translateX(4px); }
 
 /* ============================================================
-   MESSAGES — visibility forced from JS via inline style.display.
-   These rules just style the box once it IS visible.
+   MESSAGES
    ============================================================ */
 .auth-msg {
   margin: 4px 0 0;
@@ -427,7 +425,6 @@ html, body, .screen, .scrollable {
   border-radius: 12px;
   text-align: center;
   line-height: 1.5;
-  /* default hidden; JS toggles inline display:block when there is content */
   display: none;
 }
 .auth-msg.info {
@@ -692,20 +689,55 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   z-index: 5;
 }
 
+/* ============================================================
+   HUD — respects iPhone notch / Dynamic Island / Android cutouts
+   ============================================================ */
 .game-hud {
-  position: fixed; top: 0; left: 0; right: 0;
-  display: grid; grid-template-columns: 1fr 1fr 1fr;
-  padding: 14px 18px;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  padding: calc(14px + env(safe-area-inset-top, 0px))
+           calc(18px + env(safe-area-inset-right, 0px))
+           14px
+           calc(18px + env(safe-area-inset-left, 0px));
   gap: 12px;
   pointer-events: none;
   z-index: 4;
 }
 .game-hud .hud-block, .game-hud .hud-center { pointer-events: auto; }
 .hud-left, .hud-center, .hud-right { display: flex; gap: 12px; align-items: center; }
-.hud-right { justify-content: flex-end; }
-.hud-center { flex-direction: column; text-align: center; }
-.hud-center span { font-size: 0.78rem; letter-spacing: 0.16em; color: var(--accent); text-transform: uppercase; font-weight: 800; }
-.hud-center strong { font-family: 'Black Ops One', sans-serif; font-size: 1.1rem; color: var(--bone); }
+.hud-left { justify-content: flex-start; }
+.hud-right { justify-content: flex-end; flex-wrap: wrap; }
+.hud-center {
+  flex-direction: column;
+  text-align: center;
+  align-items: center;
+  background: rgba(8,16,12,0.78);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 6px 14px;
+  min-width: 0;
+  max-width: 280px;
+}
+.hud-center span {
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  text-transform: uppercase;
+  font-weight: 800;
+}
+.hud-center strong {
+  font-family: 'Black Ops One', sans-serif;
+  font-size: 1rem;
+  color: var(--bone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.15;
+}
 .hud-block {
   background: rgba(8,16,12,0.88);
   border: 1.5px solid var(--border);
@@ -721,10 +753,13 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 .bar-fill.health { background: linear-gradient(90deg, var(--accent), #8fda58); }
 
 .kill-feed {
-  position: fixed; right: 18px; top: 90px;
+  position: fixed;
+  right: calc(18px + env(safe-area-inset-right, 0px));
+  top: calc(140px + env(safe-area-inset-top, 0px));
   display: flex; flex-direction: column; gap: 6px;
   pointer-events: none;
   z-index: 4;
+  max-width: 280px;
 }
 .kill-feed .feed-item {
   background: rgba(8,16,12,0.88);
@@ -750,7 +785,10 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   display: grid; place-items: center;
   background: rgba(0,0,0,0.85);
   z-index: 10;
-  padding: 20px;
+  padding: calc(20px + env(safe-area-inset-top, 0px))
+           calc(20px + env(safe-area-inset-right, 0px))
+           calc(20px + env(safe-area-inset-bottom, 0px))
+           calc(20px + env(safe-area-inset-left, 0px));
   overflow-y: auto;
 }
 .game-overlay.hidden { display: none; }
@@ -775,7 +813,9 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   .mobile-controls {
     display: flex;
     position: fixed; left: 0; right: 0; bottom: 0;
-    padding: 16px 18px calc(24px + env(safe-area-inset-bottom));
+    padding: 16px calc(18px + env(safe-area-inset-right, 0px))
+             calc(24px + env(safe-area-inset-bottom, 0px))
+             calc(18px + env(safe-area-inset-left, 0px));
     justify-content: space-between;
     align-items: flex-end;
     z-index: 5;
@@ -865,7 +905,8 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 
 .toast {
   position: fixed;
-  top: 18px; left: 50%;
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  left: 50%;
   transform: translateX(-50%);
   background: #1f3a26;
   border: 2px solid var(--accent);
@@ -883,7 +924,11 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   h1 { font-size: 1.7rem; }
   .auth-title { font-size: 2rem; }
   .auth-card { padding: 26px 22px 18px; }
-  .hud-block { min-width: 70px; padding: 6px 10px; }
-  .hud-block strong { font-size: 1rem; }
-  .bar { width: 80px; }
+  .hud-block { min-width: 64px; padding: 6px 8px; }
+  .hud-block strong { font-size: 0.95rem; }
+  .hud-block span { font-size: 0.62rem; letter-spacing: 0.08em; }
+  .bar { width: 70px; height: 8px; }
+  .hud-center { padding: 5px 10px; max-width: 160px; }
+  .hud-center span { font-size: 0.6rem; }
+  .hud-center strong { font-size: 0.85rem; }
 }
