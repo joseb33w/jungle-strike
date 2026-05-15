@@ -4,7 +4,7 @@
 // Auth/Supabase come from window globals set by index.html.
 // =============================================================
 import * as THREE from 'three';
-import { buildWorld } from './worlds.js?v=16';
+import { buildWorld } from './worlds.js';
 
 // ---- Auth bridge (set by index.html inline script) ----
 const Auth = window.__JUNGLE_AUTH_BRIDGE || {
