@@ -135,14 +135,21 @@
       </div>
     </div>
 
-    <!-- mobile controls -->
+    <!-- mobile controls: dual joystick + fire/reload -->
     <div id="mobileControls" class="mobile-controls">
-      <div id="moveStick" class="stick"><div class="stick-knob"></div></div>
-      <div class="touch-buttons">
-        <button id="lookLeftBtn" class="tbtn">◀</button>
-        <button id="lookRightBtn" class="tbtn">▶</button>
-        <button id="reloadTBtn" class="tbtn small">R</button>
-        <button id="fireBtn" class="tbtn fire">🔥</button>
+      <div id="moveStick" class="stick move-stick">
+        <div class="stick-label">MOVE</div>
+        <div class="stick-knob"></div>
+      </div>
+      <div class="touch-side">
+        <div class="touch-buttons">
+          <button id="reloadTBtn" class="tbtn small">⟲</button>
+          <button id="fireBtn" class="tbtn fire">🔥</button>
+        </div>
+        <div id="lookStick" class="stick look-stick">
+          <div class="stick-label">LOOK</div>
+          <div class="stick-knob"></div>
+        </div>
       </div>
     </div>
 
