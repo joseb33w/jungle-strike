@@ -45,7 +45,7 @@
           </label>
 
           <label id="usernameField" class="field" hidden>
-            <span class="field-label">Callsign</span>
+            <span class="field-label">Username</span>
             <span class="field-input-wrap">
               <span class="field-icon" aria-hidden="true">★</span>
               <input type="text" id="authUsername" placeholder="Your in-game name" maxlength="16" autocomplete="username" />
@@ -72,7 +72,7 @@
           <div id="authActions" class="auth-actions" hidden></div>
         </form>
 
-        <p class="auth-foot">Play fair, recruit. No cheats allowed.</p>
+        <p class="auth-foot">Play fair. No cheats allowed.</p>
       </div>
     </div>
   </section>
@@ -83,7 +83,7 @@
       <div class="brand small">
         <div class="brand-mark">🌴</div>
         <div>
-          <p class="eyebrow">Operative Dashboard</p>
+          <p class="eyebrow">Player Dashboard</p>
           <h2 id="lobbyHello">Welcome</h2>
         </div>
       </div>
@@ -109,11 +109,11 @@
 
       <section id="worldPane" class="pane">
         <h3 class="pane-title">Multiplayer World</h3>
-        <p class="pane-sub">Drop into a shared jungle and battle live operatives. Invite a friend by their callsign.</p>
+        <p class="pane-sub">Drop into a shared jungle and battle live players. Invite a friend by their username.</p>
         <div class="world-controls">
           <button id="enterWorldBtn" class="primary-btn">Enter World</button>
           <div class="invite-row">
-            <input id="inviteUser" placeholder="Friend callsign" maxlength="16" />
+            <input id="inviteUser" placeholder="Friend's username" maxlength="16" />
             <button id="sendInviteBtn" class="secondary-btn">Send Invite</button>
           </div>
         </div>
@@ -129,7 +129,7 @@
 
       <section id="armoryPane" class="pane">
         <h3 class="pane-title">Armory</h3>
-        <p class="pane-sub">Spend coins on heavier ordnance. Equipped weapon deploys to every mission and the world.</p>
+        <p class="pane-sub">Spend coins on heavier weapons. Equipped weapon deploys to every mission and the world.</p>
         <div id="armoryGrid" class="armory-grid"></div>
       </section>
     </main>
@@ -191,7 +191,7 @@
     <div id="gameOverlay" class="game-overlay hidden">
       <div class="overlay-card">
         <h2 id="overlayTitle">Mission Complete</h2>
-        <p id="overlaySub">Outstanding work, operative.</p>
+        <p id="overlaySub">Outstanding work!</p>
         <div class="result-stats">
           <div><span>Kills</span><strong id="resKills">0</strong></div>
           <div><span>Coins</span><strong id="resCoins">0</strong></div>
