@@ -198,6 +198,6 @@ function setupAuthUI() {
 function showFatalError(msg) {
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;background:#101;z-index:999;color:white;padding:20px;font-family:sans-serif;text-align:center;';
-  el.innerHTML = `<div><h1>\u26A0\uFE0F Failed to load</h1><p>${msg}</p></div>`;
+  el.innerHTML = `<div><h1>\u26A0\uFE0F Something went wrong</h1><p>${msg}</p></div>`;
   document.body.appendChild(el);
 }
