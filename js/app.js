@@ -35,12 +35,11 @@ function enterApp() {
 }
 
 // =========================================================
-// AUTH UI HELPERS — robust message rendering
+// AUTH UI — robust message rendering + bulletproof submit
 // =========================================================
 function setMessage(text, kind) {
   const el = document.getElementById('authMessage');
   if (!el) return;
-  // Reset classes
   el.className = 'auth-msg';
   if (!text) {
     el.textContent = '';
@@ -51,6 +50,9 @@ function setMessage(text, kind) {
   if (kind) el.classList.add(kind);
   // Force visible regardless of CSS quirks
   el.style.display = 'block';
+  el.style.visibility = 'visible';
+  el.style.opacity = '1';
+  console.log(`[auth message] (${kind || 'info'}):`, text);
 }
 
 function setActions(actions) {
@@ -80,24 +82,20 @@ function setSubmitLabel(text) {
   else submitBtn.textContent = text;
 }
 
+let currentMode = 'signin';
+let submitInFlight = false;
+
 function setupAuthUI() {
-  const tabsContainer = document.querySelector('#authScreen .tabs');
   const tabs = document.querySelectorAll('#authScreen .tab');
   const usernameField = document.getElementById('usernameField');
-  let mode = 'signin';
-
-  if (tabsContainer) tabsContainer.setAttribute('data-active', 'signin');
 
   tabs.forEach(t => {
     t.addEventListener('click', () => {
       tabs.forEach(x => x.classList.remove('active'));
       t.classList.add('active');
-      mode = t.dataset.tab;
-      if (tabsContainer) tabsContainer.setAttribute('data-active', mode);
-      usernameField.hidden = mode !== 'signup';
-      const userInput = document.getElementById('authUsername');
-      if (userInput) userInput.required = (mode === 'signup');
-      setSubmitLabel(mode === 'signin' ? 'Sign In' : 'Create Account');
+      currentMode = t.dataset.tab;
+      usernameField.hidden = currentMode !== 'signup';
+      setSubmitLabel(currentMode === 'signin' ? 'Sign In' : 'Create Account');
       setMessage('');
       setActions(null);
     });
@@ -108,7 +106,7 @@ function setupAuthUI() {
   if (forgotLink) {
     forgotLink.addEventListener('click', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('authEmail').value.trim();
+      const email = (document.getElementById('authEmail').value || '').trim();
       if (!email) {
         setMessage('Type your email in the box above first, then tap Forgot password.', 'error');
         return;
@@ -124,98 +122,144 @@ function setupAuthUI() {
     });
   }
 
-  document.getElementById('authForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('authEmail').value.trim();
-    const pw = document.getElementById('authPassword').value;
-    const username = document.getElementById('authUsername').value.trim();
-    const submit = document.getElementById('authSubmit');
+  // Wire BOTH the form submit AND the button click. Some mobile browsers
+  // are unreliable about firing submit on a button tap, so we listen on both
+  // and de-dupe with submitInFlight.
+  const form = document.getElementById('authForm');
+  const submitBtn = document.getElementById('authSubmit');
 
-    setActions(null);
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleAuthSubmit();
+    });
+  }
+  if (submitBtn) {
+    submitBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleAuthSubmit();
+    });
+  }
 
-    if (!email) { setMessage('Please enter your email.', 'error'); return; }
-    if (!pw) { setMessage('Please enter your password.', 'error'); return; }
-    if (pw.length < 6) { setMessage('Your password needs to be at least 6 characters.', 'error'); return; }
-    if (mode === 'signup' && !username) { setMessage('Please choose a username.', 'error'); return; }
-
-    setMessage(mode === 'signin' ? 'Signing you in…' : 'Creating your account…', 'info');
-    submit.disabled = true;
-
-    try {
-      if (mode === 'signin') {
-        await Auth.signIn(email, pw);
-        if (Auth.user) {
-          const name = Auth.profile?.username || email.split('@')[0];
-          setMessage(`Welcome back, ${name}! Taking you to the menu…`, 'success');
-          // Give the user a beat to see the success message, then enter app.
-          // If enterApp throws for any reason, we surface it instead of
-          // leaving them stuck on a green "welcome" message.
-          setTimeout(() => {
-            try {
-              enterApp();
-            } catch (e) {
-              console.error('enterApp failed after sign-in:', e);
-              setMessage('Signed in, but something went wrong loading the menu. Please refresh.', 'error');
-            }
-          }, 600);
-        } else {
-          setMessage('We couldn\u2019t sign you in. Please double-check your email and password.', 'error');
-        }
-      } else {
-        const res = await Auth.signUp(email, pw, username);
-        if (Auth.user && res?.session) {
-          setMessage(`Welcome, ${username}! Your account is ready. Taking you to the menu…`, 'success');
-          setTimeout(() => {
-            try {
-              enterApp();
-            } catch (e) {
-              console.error('enterApp failed after sign-up:', e);
-              setMessage('Account created, but something went wrong loading the menu. Please refresh.', 'error');
-            }
-          }, 700);
-        } else if (Auth.user && !res?.session) {
-          setMessage(`Account created! We sent a confirmation link to ${email}. Click it, then come back and sign in.`, 'success');
-          setActions([
-            { label: 'Resend confirmation email', onClick: async () => {
-                setMessage('Sending another confirmation email…', 'info');
-                try {
-                  await Auth.resendConfirmation(email);
-                  setMessage(`We re-sent the confirmation email to ${email}. Check your inbox and spam folder.`, 'success');
-                } catch (err) {
-                  setMessage(err?.message || 'We couldn\u2019t resend the email. Please try again in a moment.', 'error');
-                }
-              }
-            }
-          ]);
-        } else {
-          setMessage('Account created. Please sign in.', 'success');
-        }
+  // Pressing Enter inside any input also submits
+  ['authEmail', 'authPassword', 'authUsername'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAuthSubmit();
       }
-    } catch (err) {
-      const msg = err?.message || 'Something went wrong. Please try again.';
-      setMessage(msg, 'error');
-      console.error('Auth submit error:', err);
+    });
+  });
+}
 
-      // If the failure is "email not confirmed", offer a Resend button right
-      // under the error so the user can fix it in one tap.
-      if (err?.code === 'email_not_confirmed') {
+async function handleAuthSubmit() {
+  if (submitInFlight) {
+    console.log('[auth] submit ignored — already in flight');
+    return;
+  }
+
+  const emailEl = document.getElementById('authEmail');
+  const pwEl = document.getElementById('authPassword');
+  const userEl = document.getElementById('authUsername');
+  const submit = document.getElementById('authSubmit');
+
+  const email = (emailEl?.value || '').trim();
+  const pw = pwEl?.value || '';
+  const username = (userEl?.value || '').trim();
+
+  console.log('[auth] submit start', { mode: currentMode, email, hasPw: !!pw, username });
+
+  setActions(null);
+
+  if (!email) { setMessage('Please enter your email.', 'error'); emailEl?.focus(); return; }
+  if (!pw) { setMessage('Please enter your password.', 'error'); pwEl?.focus(); return; }
+  if (pw.length < 6) { setMessage('Your password needs to be at least 6 characters.', 'error'); pwEl?.focus(); return; }
+  if (currentMode === 'signup' && !username) { setMessage('Please choose a username.', 'error'); userEl?.focus(); return; }
+
+  setMessage(currentMode === 'signin' ? 'Signing you in…' : 'Creating your account…', 'info');
+  submitInFlight = true;
+  if (submit) submit.disabled = true;
+
+  try {
+    if (currentMode === 'signin') {
+      console.log('[auth] calling Auth.signIn');
+      await Auth.signIn(email, pw);
+      console.log('[auth] signIn result — user:', Auth.user?.id, 'profile:', Auth.profile?.username);
+
+      if (Auth.user) {
+        const name = Auth.profile?.username || email.split('@')[0];
+        setMessage(`Welcome back, ${name}! Taking you to the menu…`, 'success');
+        setTimeout(() => {
+          try {
+            enterApp();
+          } catch (e) {
+            console.error('enterApp failed after sign-in:', e);
+            setMessage('Signed in, but something went wrong loading the menu. Please refresh.', 'error');
+          }
+        }, 500);
+      } else {
+        setMessage('We couldn\u2019t sign you in. Please double-check your email and password.', 'error');
+      }
+    } else {
+      console.log('[auth] calling Auth.signUp');
+      const res = await Auth.signUp(email, pw, username);
+      console.log('[auth] signUp result — user:', Auth.user?.id, 'session:', !!res?.session);
+
+      if (Auth.user && res?.session) {
+        setMessage(`Welcome, ${username}! Your account is ready. Taking you to the menu…`, 'success');
+        setTimeout(() => {
+          try {
+            enterApp();
+          } catch (e) {
+            console.error('enterApp failed after sign-up:', e);
+            setMessage('Account created, but something went wrong loading the menu. Please refresh.', 'error');
+          }
+        }, 600);
+      } else if (Auth.user && !res?.session) {
+        setMessage(`Account created! We sent a confirmation link to ${email}. Click it, then come back and sign in.`, 'success');
         setActions([
           { label: 'Resend confirmation email', onClick: async () => {
               setMessage('Sending another confirmation email…', 'info');
               try {
                 await Auth.resendConfirmation(email);
-                setMessage(`We re-sent the confirmation email to ${email}. Tap the link inside, then try signing in again.`, 'success');
-              } catch (e2) {
-                setMessage(e2?.message || 'We couldn\u2019t resend the email. Please try again in a moment.', 'error');
+                setMessage(`We re-sent the confirmation email to ${email}. Check your inbox and spam folder.`, 'success');
+              } catch (err) {
+                setMessage(err?.message || 'We couldn\u2019t resend the email. Please try again in a moment.', 'error');
               }
             }
           }
         ]);
+      } else {
+        setMessage('Account created. Please sign in.', 'success');
       }
-    } finally {
-      submit.disabled = false;
     }
-  });
+  } catch (err) {
+    const msg = err?.message || 'Something went wrong. Please try again.';
+    setMessage(msg, 'error');
+    console.error('[auth] submit error:', err);
+
+    if (err?.code === 'email_not_confirmed') {
+      setActions([
+        { label: 'Resend confirmation email', onClick: async () => {
+            setMessage('Sending another confirmation email…', 'info');
+            try {
+              await Auth.resendConfirmation(email);
+              setMessage(`We re-sent the confirmation email to ${email}. Tap the link inside, then try signing in again.`, 'success');
+            } catch (e2) {
+              setMessage(e2?.message || 'We couldn\u2019t resend the email. Please try again in a moment.', 'error');
+            }
+          }
+        }
+      ]);
+    }
+  } finally {
+    submitInFlight = false;
+    if (submit) submit.disabled = false;
+  }
 }
 
 function showFatalError(msg) {
