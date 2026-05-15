@@ -415,34 +415,38 @@ html, body, .screen, .scrollable {
 .auth-submit:hover .btn-arrow { transform: translateX(4px); }
 
 /* ============================================================
-   MESSAGES
+   MESSAGES — visibility forced from JS via inline style.display.
+   These rules just style the box once it IS visible.
    ============================================================ */
 .auth-msg {
   margin: 4px 0 0;
   min-height: 1.2em;
   font-size: 0.95rem;
-  font-weight: 600;
-  padding: 12px 14px;
-  border-radius: 10px;
+  font-weight: 700;
+  padding: 14px 16px;
+  border-radius: 12px;
   text-align: center;
+  line-height: 1.5;
+  /* default hidden; JS toggles inline display:block when there is content */
   display: none;
-  line-height: 1.45;
 }
-.auth-msg:not(:empty) { display: block; }
 .auth-msg.info {
-  background: rgba(232,255,138,0.22);
-  border: 1.5px solid rgba(232,255,138,0.55);
+  background: rgba(232,255,138,0.28);
+  border: 2px solid rgba(232,255,138,0.7);
   color: #ffffff;
+  box-shadow: 0 4px 16px rgba(232,255,138,0.18);
 }
 .auth-msg.success {
-  background: rgba(155,224,96,0.28);
-  border: 1.5px solid rgba(155,224,96,0.65);
+  background: rgba(155,224,96,0.35);
+  border: 2px solid rgba(155,224,96,0.85);
   color: #ffffff;
+  box-shadow: 0 4px 16px rgba(155,224,96,0.25);
 }
 .auth-msg.error {
-  background: rgba(255,117,133,0.28);
-  border: 1.5px solid rgba(255,117,133,0.65);
+  background: rgba(255,117,133,0.35);
+  border: 2px solid rgba(255,117,133,0.85);
   color: #ffffff;
+  box-shadow: 0 4px 16px rgba(255,117,133,0.25);
 }
 
 .auth-actions {
