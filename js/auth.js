@@ -175,7 +175,7 @@ export const Auth = {
   },
 
   _fallbackProfile(username) {
-    const u = username || this.user?.user_metadata?.username || (this.user?.email || 'agent').split('@')[0];
+    const u = username || this.user?.user_metadata?.username || (this.user?.email || 'Player').split('@')[0];
     return {
       id: null,
       username: u,
@@ -205,7 +205,7 @@ export const Auth = {
       console.warn('Profile select failed:', e.message);
     }
 
-    const fallbackName = this.user?.user_metadata?.username || (this.user?.email || 'agent').split('@')[0];
+    const fallbackName = this.user?.user_metadata?.username || (this.user?.email || 'Player').split('@')[0];
     try {
       await this.ensureProfile(fallbackName);
     } catch (e) {
@@ -217,7 +217,7 @@ export const Auth = {
 
   async ensureProfile(username) {
     if (!this.user) return null;
-    const safe = (username || 'agent').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'agent' + Math.floor(Math.random() * 999);
+    const safe = (username || 'Player').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'Player' + Math.floor(Math.random() * 999);
     try {
       const { data, error } = await supabase
         .from(TABLES.profiles)
