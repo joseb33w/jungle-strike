@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Jungle Strike</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=17" />
+<link rel="stylesheet" href="styles.css?v=18" />
 <style>
   html, body { background: #06180c; }
   body::before {
@@ -761,11 +761,7 @@
       } catch (e) { /* presence is best-effort */ }
     }
 
-    /* ---------- LAUNCH GAME (lazy load three.js + game.js) ----------
-       IMPORTANT: no ?v= query string on the import. Some preview
-       proxies (preview.myapping.com) mangle query strings on JS
-       module URLs and serve back HTML or 404, which causes
-       "A game module failed to import." Plain URL = reliable. */
+    /* ---------- LAUNCH GAME (lazy load three.js + game.js) ---------- */
     function loadGameModule() {
       if (!gameModulePromise) {
         gameModulePromise = import('./js/game.js').catch(function (err) {
@@ -778,21 +774,15 @@
       return gameModulePromise;
     }
 
-    // Pre-fetch the game module (and its deps) as soon as the user
-    // is logged in, so by the time they tap Deploy it's already in
-    // the browser's module cache.
     var prefetched = false;
     function prefetchGameModule() {
       if (prefetched) return;
       prefetched = true;
       loadGameModule().catch(function () {
-        // Failure here is silent — we'll surface a clean error if
-        // the user actually taps Deploy/Enter World.
         prefetched = false;
       });
     }
 
-    // Expose Auth-like API for game.js
     window.__JUNGLE_AUTH_BRIDGE = {
       get user()    { return sessionUser; },
       get profile() { return sessionProfile; },
@@ -804,7 +794,6 @@
     function gameLoadErrorMessage(err) {
       var msg = (err && err.message) || 'Unknown error';
       var name = (err && err.name) || '';
-      // Friendly summaries for the most common failures
       if (/three/i.test(msg) && /resolve|specifier|module/i.test(msg))
         return 'Game engine (three.js) failed to load from CDN.';
       if (/Failed to fetch|NetworkError/i.test(msg))
@@ -845,14 +834,12 @@
       }
     }
 
-    /* ---------- UTIL ---------- */
     function escapeHtml(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
         return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
       });
     }
 
-    /* ---------- WIRING ---------- */
     function wireTabs() {
       var tabs = document.querySelectorAll('#authScreen .tab');
       var usernameField = $('usernameField');
@@ -926,13 +913,11 @@
           sessionUser = session.user;
           sessionProfile = await loadOrCreateProfile(sessionUser, null);
           enterLobby();
-          // start prefetching the game engine in the background
           setTimeout(prefetchGameModule, 500);
         }
       } catch (e) { console.warn('[auth] session restore error:', e && e.message); }
     }
 
-    // Patch enterLobby to also prefetch the game module
     var _origEnterLobby = enterLobby;
     enterLobby = function () {
       _origEnterLobby();
@@ -950,7 +935,6 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();
 
-    // Debug handle
     window.__JUNGLE_APP = {
       enterLobby: enterLobby,
       getSession: function () { return { user: sessionUser, profile: sessionProfile }; },
