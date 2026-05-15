@@ -21,7 +21,13 @@ let worldOnComplete = null;
 
 const keys = {};
 const mouse = { dx: 0, dy: 0, locked: false, fireDown: false };
-const touch = { active: false, x: 0, y: 0, dx: 0, dy: 0, lookLeft: false, lookRight: false };
+
+// Dual joystick state. moveStick = left (WASD), lookStick = right (mouselook).
+const moveStick = { pointerId: null, cx: 0, cy: 0, dx: 0, dy: 0 };
+const lookStick = { pointerId: null, cx: 0, cy: 0, dx: 0, dy: 0 };
+
+// Track event listeners we attach so we can detach cleanly on exit.
+const stickListeners = [];
 
 const tmpVec = new THREE.Vector3();
 const tmpDir = new THREE.Vector3();
@@ -260,6 +266,9 @@ function setObjective(text) {
   document.getElementById('missionObjective').textContent = text;
 }
 
+// =============================================================
+// INPUT — keyboard, mouse, dual-joystick touch (Pointer Events)
+// =============================================================
 function attachInput() {
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
@@ -269,32 +278,112 @@ function attachInput() {
   document.addEventListener('mousedown', onMouseDown);
   document.addEventListener('mouseup', onMouseUp);
 
-  const stick = document.getElementById('moveStick');
-  if (stick) {
-    stick.addEventListener('touchstart', onStickStart);
-    stick.addEventListener('touchmove', onStickMove);
-    stick.addEventListener('touchend', onStickEnd);
-  }
+  // Block iOS long-press magnifier / copy menu globally on the game screen
+  const blockCtx = (e) => e.preventDefault();
+  document.getElementById('gameScreen').addEventListener('contextmenu', blockCtx);
+  stickListeners.push({ el: document.getElementById('gameScreen'), type: 'contextmenu', fn: blockCtx });
+
+  // ---- Dual joysticks via Pointer Events ----
+  setupStick(document.getElementById('moveStick'), moveStick);
+  setupStick(document.getElementById('lookStick'), lookStick);
+
+  // Fire button (use pointer events so it doesn't fight with joysticks)
   const fireBtn = document.getElementById('fireBtn');
   if (fireBtn) {
-    fireBtn.addEventListener('touchstart', e => { e.preventDefault(); mouse.fireDown = true; tryFire(); });
-    fireBtn.addEventListener('touchend', e => { e.preventDefault(); mouse.fireDown = false; });
+    const onFireDown = (e) => { e.preventDefault(); mouse.fireDown = true; tryFire(); };
+    const onFireUp = (e) => { e.preventDefault(); mouse.fireDown = false; };
+    fireBtn.addEventListener('pointerdown', onFireDown);
+    fireBtn.addEventListener('pointerup', onFireUp);
+    fireBtn.addEventListener('pointercancel', onFireUp);
+    fireBtn.addEventListener('pointerleave', onFireUp);
+    fireBtn.addEventListener('contextmenu', blockCtx);
+    stickListeners.push({ el: fireBtn, type: 'pointerdown', fn: onFireDown });
+    stickListeners.push({ el: fireBtn, type: 'pointerup', fn: onFireUp });
+    stickListeners.push({ el: fireBtn, type: 'pointercancel', fn: onFireUp });
+    stickListeners.push({ el: fireBtn, type: 'pointerleave', fn: onFireUp });
+    stickListeners.push({ el: fireBtn, type: 'contextmenu', fn: blockCtx });
   }
   const reload = document.getElementById('reloadTBtn');
-  if (reload) reload.addEventListener('touchstart', e => { e.preventDefault(); reloadWeapon(); });
-  const lookL = document.getElementById('lookLeftBtn');
-  const lookR = document.getElementById('lookRightBtn');
-  if (lookL) {
-    lookL.addEventListener('touchstart', e => { e.preventDefault(); touch.lookLeft = true; });
-    lookL.addEventListener('touchend', e => { e.preventDefault(); touch.lookLeft = false; });
-  }
-  if (lookR) {
-    lookR.addEventListener('touchstart', e => { e.preventDefault(); touch.lookRight = true; });
-    lookR.addEventListener('touchend', e => { e.preventDefault(); touch.lookRight = false; });
+  if (reload) {
+    const onReload = (e) => { e.preventDefault(); reloadWeapon(); };
+    reload.addEventListener('pointerdown', onReload);
+    reload.addEventListener('contextmenu', blockCtx);
+    stickListeners.push({ el: reload, type: 'pointerdown', fn: onReload });
+    stickListeners.push({ el: reload, type: 'contextmenu', fn: blockCtx });
   }
 
   document.getElementById('exitGameBtn').onclick = () => endGame(false, true);
   document.getElementById('overlayBack').onclick = () => returnToBase();
+}
+
+function setupStick(el, state) {
+  if (!el) return;
+
+  const onDown = (e) => {
+    if (state.pointerId !== null) return;          // already tracking a finger
+    e.preventDefault();
+    e.stopPropagation();
+    const r = el.getBoundingClientRect();
+    state.cx = r.left + r.width / 2;
+    state.cy = r.top + r.height / 2;
+    state.pointerId = e.pointerId;
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    updateStickPos(el, state, e.clientX, e.clientY);
+  };
+
+  const onMove = (e) => {
+    if (state.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    updateStickPos(el, state, e.clientX, e.clientY);
+  };
+
+  const onUp = (e) => {
+    if (state.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    state.pointerId = null;
+    state.dx = 0;
+    state.dy = 0;
+    try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+    const knob = el.querySelector('.stick-knob');
+    if (knob) knob.style.transform = 'translate(-50%, -50%)';
+  };
+
+  const onCtx = (e) => e.preventDefault();
+
+  el.addEventListener('pointerdown', onDown);
+  el.addEventListener('pointermove', onMove);
+  el.addEventListener('pointerup', onUp);
+  el.addEventListener('pointercancel', onUp);
+  el.addEventListener('pointerleave', onUp);
+  el.addEventListener('contextmenu', onCtx);
+  // Belt-and-suspenders: block legacy touch events that iOS might still fire
+  const blockTouch = (e) => { e.preventDefault(); };
+  el.addEventListener('touchstart', blockTouch, { passive: false });
+  el.addEventListener('touchmove', blockTouch, { passive: false });
+
+  stickListeners.push({ el, type: 'pointerdown', fn: onDown });
+  stickListeners.push({ el, type: 'pointermove', fn: onMove });
+  stickListeners.push({ el, type: 'pointerup', fn: onUp });
+  stickListeners.push({ el, type: 'pointercancel', fn: onUp });
+  stickListeners.push({ el, type: 'pointerleave', fn: onUp });
+  stickListeners.push({ el, type: 'contextmenu', fn: onCtx });
+  stickListeners.push({ el, type: 'touchstart', fn: blockTouch });
+  stickListeners.push({ el, type: 'touchmove', fn: blockTouch });
+}
+
+function updateStickPos(el, state, x, y) {
+  const dx = x - state.cx;
+  const dy = y - state.cy;
+  const mag = Math.min(50, Math.hypot(dx, dy));
+  const ang = Math.atan2(dy, dx);
+  state.dx = Math.cos(ang) * (mag / 50);
+  state.dy = Math.sin(ang) * (mag / 50);
+  const knob = el.querySelector('.stick-knob');
+  if (knob) {
+    const kx = Math.cos(ang) * mag;
+    const ky = Math.sin(ang) * mag;
+    knob.style.transform = `translate(calc(-50% + ${kx}px), calc(-50% + ${ky}px))`;
+  }
 }
 
 function detachInput() {
@@ -305,6 +394,15 @@ function detachInput() {
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('mousedown', onMouseDown);
   document.removeEventListener('mouseup', onMouseUp);
+
+  for (const { el, type, fn } of stickListeners) {
+    try { el.removeEventListener(type, fn); } catch (_) {}
+  }
+  stickListeners.length = 0;
+
+  // Reset stick state
+  moveStick.pointerId = null; moveStick.dx = 0; moveStick.dy = 0;
+  lookStick.pointerId = null; lookStick.dx = 0; lookStick.dy = 0;
 }
 
 function onKeyDown(e) {
@@ -332,42 +430,6 @@ function onMouseUp(e) {
   if (e.button === 0) mouse.fireDown = false;
 }
 
-function onStickStart(e) {
-  e.preventDefault();
-  const t = e.touches[0];
-  const r = e.currentTarget.getBoundingClientRect();
-  touch.cx = r.left + r.width / 2;
-  touch.cy = r.top + r.height / 2;
-  touch.active = true;
-  updateStick(t.clientX, t.clientY);
-}
-function onStickMove(e) {
-  e.preventDefault();
-  if (!touch.active) return;
-  const t = e.touches[0];
-  updateStick(t.clientX, t.clientY);
-}
-function onStickEnd(e) {
-  e.preventDefault();
-  touch.active = false; touch.dx = 0; touch.dy = 0;
-  const knob = document.querySelector('#moveStick .stick-knob');
-  if (knob) knob.style.transform = 'translate(-50%, -50%)';
-}
-function updateStick(x, y) {
-  const dx = x - touch.cx;
-  const dy = y - touch.cy;
-  const mag = Math.min(50, Math.hypot(dx, dy));
-  const ang = Math.atan2(dy, dx);
-  touch.dx = Math.cos(ang) * (mag / 50);
-  touch.dy = Math.sin(ang) * (mag / 50);
-  const knob = document.querySelector('#moveStick .stick-knob');
-  if (knob) {
-    const kx = Math.cos(ang) * mag;
-    const ky = Math.sin(ang) * mag;
-    knob.style.transform = `translate(calc(-50% + ${kx}px), calc(-50% + ${ky}px))`;
-  }
-}
-
 function startLoop() {
   cancelAnimationFrame(raf);
   const tick = () => {
@@ -387,16 +449,20 @@ function startLoop() {
 function update(dt) {
   if (!gameState || gameState.over) return;
 
-  // touch look
-  const lookSpeed = 1.6;
-  if (touch.lookLeft) player.yaw += lookSpeed * dt;
-  if (touch.lookRight) player.yaw -= lookSpeed * dt;
+  // Right joystick = look. Horizontal yaws camera, vertical pitches it.
+  const lookYawSpeed = 2.4;   // rad/sec at full deflection
+  const lookPitchSpeed = 1.8;
+  if (lookStick.dx || lookStick.dy) {
+    player.yaw -= lookStick.dx * lookYawSpeed * dt;
+    player.pitch -= lookStick.dy * lookPitchSpeed * dt;
+    player.pitch = Math.max(-1.4, Math.min(1.4, player.pitch));
+  }
 
   // movement
   const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-  const mvF = forward + (-touch.dy);
-  const mvS = strafe + (touch.dx);
+  const mvF = forward + (-moveStick.dy);
+  const mvS = strafe + (moveStick.dx);
   const sprint = keys.ShiftLeft || keys.ShiftRight ? player.sprintMul : 1;
 
   const yawCos = Math.cos(player.yaw);
