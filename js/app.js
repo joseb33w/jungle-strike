@@ -34,11 +34,23 @@ function enterApp() {
   refreshLobby();
 }
 
+// =========================================================
+// AUTH UI HELPERS — robust message rendering
+// =========================================================
 function setMessage(text, kind) {
   const el = document.getElementById('authMessage');
   if (!el) return;
-  el.textContent = text || '';
-  el.className = 'auth-msg' + (kind ? ' ' + kind : '');
+  // Reset classes
+  el.className = 'auth-msg';
+  if (!text) {
+    el.textContent = '';
+    el.style.display = 'none';
+    return;
+  }
+  el.textContent = text;
+  if (kind) el.classList.add(kind);
+  // Force visible regardless of CSS quirks
+  el.style.display = 'block';
 }
 
 function setActions(actions) {
@@ -135,10 +147,17 @@ function setupAuthUI() {
         if (Auth.user) {
           const name = Auth.profile?.username || email.split('@')[0];
           setMessage(`Welcome back, ${name}! Taking you to the menu…`, 'success');
+          // Give the user a beat to see the success message, then enter app.
+          // If enterApp throws for any reason, we surface it instead of
+          // leaving them stuck on a green "welcome" message.
           setTimeout(() => {
-            setMessage('');
-            enterApp();
-          }, 700);
+            try {
+              enterApp();
+            } catch (e) {
+              console.error('enterApp failed after sign-in:', e);
+              setMessage('Signed in, but something went wrong loading the menu. Please refresh.', 'error');
+            }
+          }, 600);
         } else {
           setMessage('We couldn\u2019t sign you in. Please double-check your email and password.', 'error');
         }
@@ -147,9 +166,13 @@ function setupAuthUI() {
         if (Auth.user && res?.session) {
           setMessage(`Welcome, ${username}! Your account is ready. Taking you to the menu…`, 'success');
           setTimeout(() => {
-            setMessage('');
-            enterApp();
-          }, 800);
+            try {
+              enterApp();
+            } catch (e) {
+              console.error('enterApp failed after sign-up:', e);
+              setMessage('Account created, but something went wrong loading the menu. Please refresh.', 'error');
+            }
+          }, 700);
         } else if (Auth.user && !res?.session) {
           setMessage(`Account created! We sent a confirmation link to ${email}. Click it, then come back and sign in.`, 'success');
           setActions([
