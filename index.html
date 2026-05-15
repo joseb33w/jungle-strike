@@ -6,8 +6,10 @@
 <title>Jungle Strike</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=9" />
+<link rel="stylesheet" href="styles.css?v=11" />
 <style>
   html, body { background: #06180c; }
   body::before {
@@ -18,7 +20,6 @@
     z-index: -10;
     pointer-events: none;
   }
-  /* Boot status banner — only visible if something is wrong */
   #bootBanner {
     position: fixed;
     top: 0; left: 0; right: 0;
@@ -39,7 +40,6 @@
 </style>
 </head>
 <body>
-  <!-- Boot status / error banner -->
   <div id="bootBanner" role="status" aria-live="polite"></div>
 
   <!-- AUTH SCREEN -->
@@ -235,6 +235,38 @@
 
   <div id="toast" class="toast hidden"></div>
 
+  <!-- ===================================================
+       1) LOAD SUPABASE AS A GLOBAL UMD SCRIPT
+          Plain <script> tag = works even when ES module
+          CDN imports fail in the preview wrapper. Has a
+          fallback CDN if the primary one is blocked.
+       =================================================== -->
+  <script>
+    (function loadSupabase() {
+      var primary  = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+      var fallback = 'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js';
+
+      function inject(src, onError) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = false;          // keep order
+        s.crossOrigin = 'anonymous';
+        s.onerror = function () {
+          console.warn('[supabase] failed to load from', src);
+          if (onError) onError();
+        };
+        s.onload = function () {
+          window.__SUPABASE_GLOBAL_READY = true;
+          console.log('[supabase] global loaded from', src);
+        };
+        document.head.appendChild(s);
+      }
+
+      inject(primary, function () { inject(fallback); });
+    })();
+  </script>
+
+  <!-- 2) THREE.js still needs to be an ES module — keep the importmap -->
   <script type="importmap">
   {
     "imports": {
@@ -244,18 +276,18 @@
   </script>
 
   <!-- ===================================================
-       PRE-MODULE BOOT SCRIPT — runs synchronously, BEFORE
-       any ES module. Guarantees the Sign In button does
-       SOMETHING when clicked, even if modules fail to load.
+       3) PRE-MODULE BOOT — runs synchronously before any
+       ES module. Owns the auth UI's submit handler and
+       queues clicks if the user taps before modules load.
        =================================================== -->
   <script>
   (function preBoot(){
-    var BOOT_VERSION = 10;
+    var BOOT_VERSION = 11;
     window.__JUNGLE_BOOT = {
       version: BOOT_VERSION,
       moduleReady: false,
-      pendingClick: false,   // user clicked before modules loaded
-      bannerLocked: false    // once modules say ready, ignore any timeout banner
+      pendingClick: false,
+      bannerLocked: false
     };
 
     function setBanner(text, kind) {
@@ -270,7 +302,6 @@
       else if (kind === 'info') b.classList.add('info');
     }
 
-    // Expose so app.js can clear it when modules are ready
     window.__jungleClearBanner = function() {
       window.__JUNGLE_BOOT.bannerLocked = true;
       var b = document.getElementById('bootBanner');
@@ -287,15 +318,6 @@
       el.style.opacity = '1';
     }
 
-    function clearAuthMessage() {
-      var el = document.getElementById('authMessage');
-      if (!el) return;
-      el.textContent = '';
-      el.className = 'auth-msg';
-      el.style.display = 'none';
-    }
-
-    // Strip stray text nodes that the preview wrapper may inject
     function cleanStrayNodes() {
       try {
         var roots = [document.documentElement, document.body];
@@ -304,9 +326,7 @@
           var toRemove = [];
           for (var i=0; i<root.childNodes.length; i++) {
             var n = root.childNodes[i];
-            if (n.nodeType === 3 /* TEXT_NODE */ && n.textContent.trim()) {
-              toRemove.push(n);
-            }
+            if (n.nodeType === 3 && n.textContent.trim()) toRemove.push(n);
           }
           toRemove.forEach(function(n){ n.remove(); });
         });
@@ -329,7 +349,6 @@
         e.preventDefault();
         e.stopPropagation();
 
-        // Visual confirmation that the click registered
         var label = btn.querySelector('.btn-label');
         if (label) {
           var orig = label.textContent;
@@ -339,14 +358,11 @@
           }, 600);
         }
 
-        // Modules already ready? Run the real handler now.
         if (window.__JUNGLE_BOOT.moduleReady && typeof window.__jungleHandleAuthSubmit === 'function') {
           runReal();
           return;
         }
 
-        // Otherwise mark this click as pending — modules will run it
-        // automatically the moment they finish loading.
         window.__JUNGLE_BOOT.pendingClick = true;
         showAuthMessage('Connecting… signing you in as soon as the game finishes loading.', 'info');
         setBanner('Loading game scripts… your sign-in will run automatically.', 'info');
@@ -362,6 +378,24 @@
           if (ev.key === 'Enter') { ev.preventDefault(); handleClick(ev); }
         });
       });
+
+      // Tab switching also runs from the pre-boot script so it works
+      // even if modules never load.
+      document.querySelectorAll('#authScreen .tab').forEach(function(t){
+        t.addEventListener('click', function(){
+          document.querySelectorAll('#authScreen .tab').forEach(function(x){ x.classList.remove('active'); });
+          t.classList.add('active');
+          var mode = t.dataset.tab;
+          window.__JUNGLE_CURRENT_MODE = mode;
+          var uf = document.getElementById('usernameField');
+          if (uf) uf.hidden = (mode !== 'signup');
+          var label = document.querySelector('#authSubmit .btn-label');
+          if (label) label.textContent = (mode === 'signin') ? 'Sign In' : 'Create Account';
+          showAuthMessage('', '');
+          var actions = document.getElementById('authActions');
+          if (actions) { actions.hidden = true; actions.innerHTML = ''; }
+        });
+      });
     }
 
     if (document.readyState === 'loading') {
@@ -370,15 +404,19 @@
       setupFallbackSubmit();
     }
 
-    // Module-load watchdog: 20s for slow mobile networks.
+    // Generous watchdog — 25s, only shows banner if BOTH supabase and modules
+    // failed. On slow mobile networks, this is the realistic ceiling.
     setTimeout(function(){
       if (!window.__JUNGLE_BOOT.moduleReady) {
-        setBanner('⚠️ Game scripts failed to load after 20 seconds. Check your internet and hard refresh (Ctrl+Shift+R / Cmd+Shift+R).', 'error');
-        showAuthMessage('Scripts didn\u2019t load. Check your connection and hard refresh the page.', 'error');
+        var supaOk = !!(window.supabase && typeof window.supabase.createClient === 'function');
+        if (!supaOk) {
+          setBanner('Network slow — Supabase library still loading. Tap Sign In and we\u2019ll retry automatically.', 'info');
+        } else {
+          setBanner('Game modules taking longer than usual. Tap Sign In to retry once they finish.', 'info');
+        }
       }
-    }, 20000);
+    }, 25000);
 
-    // Catch any uncaught module errors and surface them visibly
     window.addEventListener('error', function(e){
       if (e && e.filename && /\/js\//.test(e.filename)) {
         setBanner('Script error: ' + (e.message || 'unknown') + ' — hard refresh the page.', 'error');
@@ -392,7 +430,6 @@
       }
     });
 
-    // Password toggle
     document.addEventListener('click', function(e) {
       if (e.target && e.target.id === 'togglePwd') {
         var input = document.getElementById('authPassword');
@@ -404,7 +441,7 @@
   })();
   </script>
 
-  <!-- Module entry — cache-busted with version query string -->
-  <script type="module" src="js/app.js?v=10"></script>
+  <!-- 4) Module entry — cache-busted -->
+  <script type="module" src="js/app.js?v=11"></script>
 </body>
 </html>
