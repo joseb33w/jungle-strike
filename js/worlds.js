@@ -1,8 +1,13 @@
 // World builders — each mission gets a distinct, themed environment
 // with interactive props (ammo crates, medkits, explosive barrels, torches).
+//
+// IMPORTANT: The player spawns at world origin (0, 1.7, 0). We MUST keep
+// an 8-unit-radius "safe ring" around origin clear of any collider, or
+// the player will be frozen on spawn (canMoveTo() will block all motion).
 import * as THREE from 'three';
 
 const ARENA = 80;
+const SPAWN_SAFE_RADIUS = 8; // No obstacle center may sit inside this circle around (0,0)
 
 // ============================================================
 // PUBLIC: build a world for a given mission id ("recon", "boss",
@@ -25,69 +30,92 @@ export function buildWorld(scene, missionId) {
     capturePoints: [],
   };
 
-  // Ground (varies per theme)
-  buildGround(scene, config);
+  // Each piece is wrapped in try/catch so one bad landmark cannot prevent
+  // the rest of the world from loading. Without this, a single THREE.js
+  // error inside e.g. buildOutpost() would leave the player on a blank
+  // ground plane with no enemies — exactly the "world didn't load" bug.
+  safeStep('ground',     () => buildGround(scene, config));
+  safeStep('boundary',   () => buildBoundary(scene, config));
+  safeStep('foliage',    () => scatterFoliage(scene, obstacles, config));
 
-  // Boundary walls
-  buildBoundary(scene, config);
-
-  // Foliage / rocks (density and palette per theme)
-  scatterFoliage(scene, obstacles, config);
-
-  // Theme-specific landmarks
   if (missionId === 'recon') {
-    buildRiver(scene, obstacles, props);
-    buildWatchTower(scene, obstacles, props, -25, 15);
-    buildAmmoCrate(scene, props, 8, -8);
-    buildMedkit(scene, props, -8, 8);
-    buildTorch(scene, props, 14, 14);
+    safeStep('river',      () => buildRiver(scene, obstacles, props));
+    safeStep('tower-1',    () => buildWatchTower(scene, obstacles, props, -28, 18));
+    safeStep('ammo-1',     () => buildAmmoCrate(scene, props, 10, -10));
+    safeStep('medkit-1',   () => buildMedkit(scene, props, -10, 10));
+    safeStep('torch-1',    () => buildTorch(scene, props, 16, 16));
+    safeStep('torch-2',    () => buildTorch(scene, props, -16, -16));
   } else if (missionId === 'boss') {
-    buildCartelCamp(scene, obstacles, props);
-    buildAmmoCrate(scene, props, -10, 4);
-    buildAmmoCrate(scene, props, 12, -6);
-    buildBarrel(scene, obstacles, props, 6, 10);
-    buildBarrel(scene, obstacles, props, -4, 14);
-    buildBarrel(scene, obstacles, props, 18, -2);
-    buildTorch(scene, props, 0, -16);
-    buildTorch(scene, props, -16, -2);
-    buildTorch(scene, props, 16, -2);
-    buildMedkit(scene, props, 0, 20);
+    safeStep('cartel',     () => buildCartelCamp(scene, obstacles, props));
+    safeStep('ammo-1',     () => buildAmmoCrate(scene, props, -12, 6));
+    safeStep('ammo-2',     () => buildAmmoCrate(scene, props, 14, -8));
+    safeStep('barrel-1',   () => buildBarrel(scene, obstacles, props, 8, 12));
+    safeStep('barrel-2',   () => buildBarrel(scene, obstacles, props, -6, 16));
+    safeStep('barrel-3',   () => buildBarrel(scene, obstacles, props, 20, -4));
+    safeStep('torch-1',    () => buildTorch(scene, props, 0, -18));
+    safeStep('torch-2',    () => buildTorch(scene, props, -18, -4));
+    safeStep('torch-3',    () => buildTorch(scene, props, 18, -4));
+    safeStep('medkit-1',   () => buildMedkit(scene, props, 0, 22));
   } else if (missionId === 'survival') {
-    buildOutpost(scene, obstacles, props);
-    // outpost has lots of ammo/med supplies
-    buildAmmoCrate(scene, props, -5, -3);
-    buildAmmoCrate(scene, props, 5, -3);
-    buildMedkit(scene, props, 0, -5);
-    buildMedkit(scene, props, -8, 4);
-    buildMedkit(scene, props, 8, 4);
-    buildBarrel(scene, obstacles, props, -14, 0);
-    buildBarrel(scene, obstacles, props, 14, 0);
-    buildTorch(scene, props, -6, -6);
-    buildTorch(scene, props, 6, -6);
+    // Hut is the heart of the outpost. Place it BEHIND the player spawn
+    // (south of origin) so the player can immediately turn around and
+    // see it without standing inside it. Sandbag ring at radius 11 still
+    // surrounds (0,-12), and the spawn ring stays clear.
+    safeStep('outpost',    () => buildOutpost(scene, obstacles, props, 0, -12));
+    safeStep('ammo-1',     () => buildAmmoCrate(scene, props, -6, -4));
+    safeStep('ammo-2',     () => buildAmmoCrate(scene, props, 6, -4));
+    safeStep('medkit-1',   () => buildMedkit(scene, props, -4, 6));
+    safeStep('medkit-2',   () => buildMedkit(scene, props, 4, 6));
+    safeStep('medkit-3',   () => buildMedkit(scene, props, 0, 10));
+    safeStep('barrel-1',   () => buildBarrel(scene, obstacles, props, -14, 2));
+    safeStep('barrel-2',   () => buildBarrel(scene, obstacles, props, 14, 2));
+    safeStep('torch-1',    () => buildTorch(scene, props, -8, -8));
+    safeStep('torch-2',    () => buildTorch(scene, props, 8, -8));
   } else {
     // Open World — multi-biome
-    buildTempleRuins(scene, obstacles, props);
-    buildCartelOutpost(scene, obstacles, props);
-    buildWatchTower(scene, obstacles, props, 30, -25);
-    buildWatchTower(scene, obstacles, props, -30, 25);
-    buildRiver(scene, obstacles, props);
-    buildAmmoCrate(scene, props, 12, -8);
-    buildAmmoCrate(scene, props, -18, 14);
-    buildAmmoCrate(scene, props, 22, 22);
-    buildMedkit(scene, props, -12, -18);
-    buildMedkit(scene, props, 20, 6);
-    buildBarrel(scene, obstacles, props, 4, 20);
-    buildBarrel(scene, obstacles, props, -20, -8);
-    buildTorch(scene, props, 0, 30);
-    buildTorch(scene, props, -30, 0);
-    buildTorch(scene, props, 30, 0);
-    // capture flag
-    buildCaptureFlag(scene, props, 0, 0);
+    safeStep('temple',     () => buildTempleRuins(scene, obstacles, props));
+    safeStep('cartel-out', () => buildCartelOutpost(scene, obstacles, props));
+    safeStep('tower-1',    () => buildWatchTower(scene, obstacles, props, 30, -25));
+    safeStep('tower-2',    () => buildWatchTower(scene, obstacles, props, -30, 25));
+    safeStep('river',      () => buildRiver(scene, obstacles, props));
+    safeStep('ammo-1',     () => buildAmmoCrate(scene, props, 12, -10));
+    safeStep('ammo-2',     () => buildAmmoCrate(scene, props, -18, 14));
+    safeStep('ammo-3',     () => buildAmmoCrate(scene, props, 22, 22));
+    safeStep('medkit-1',   () => buildMedkit(scene, props, -12, -18));
+    safeStep('medkit-2',   () => buildMedkit(scene, props, 20, 6));
+    safeStep('barrel-1',   () => buildBarrel(scene, obstacles, props, 4, 20));
+    safeStep('barrel-2',   () => buildBarrel(scene, obstacles, props, -20, -8));
+    safeStep('torch-1',    () => buildTorch(scene, props, 0, 32));
+    safeStep('torch-2',    () => buildTorch(scene, props, -32, 0));
+    safeStep('torch-3',    () => buildTorch(scene, props, 32, 0));
+    // Capture flag offset from spawn so the player can SEE it
+    // (was at 0,0 = exactly where the player spawns — invisible underfoot).
+    safeStep('flag',       () => buildCaptureFlag(scene, props, 0, 18));
   }
+
+  // Final safety net: any obstacle that snuck inside the spawn ring gets
+  // removed. This guarantees the player can always move on spawn.
+  pruneSpawnRing(obstacles);
 
   // animated ambient updater
   const ambient = makeAmbient(config, props);
   return { obstacles, props, ambient, config };
+}
+
+function safeStep(label, fn) {
+  try { fn(); }
+  catch (e) { console.warn('[world] step "' + label + '" failed:', e && e.message); }
+}
+
+function pruneSpawnRing(obstacles) {
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i];
+    if (Math.hypot(o.x, o.z) < SPAWN_SAFE_RADIUS) {
+      // Don't actually remove the mesh — just remove its collision so
+      // the player can walk through it on spawn. Visual stays intact.
+      obstacles.splice(i, 1);
+    }
+  }
 }
 
 // ============================================================
@@ -96,7 +124,7 @@ export function buildWorld(scene, missionId) {
 const THEMES = {
   recon: {
     name: 'River Basin',
-    sky: 0x4ea3c8,         // light teal sky
+    sky: 0x4ea3c8,
     fog: 0x9dc8b0,
     fogNear: 30, fogFar: 110,
     groundColor: 0x4d7a3c,
@@ -118,7 +146,7 @@ const THEMES = {
   },
   survival: {
     name: 'Ranger Outpost',
-    sky: 0x5c4a2a,         // dusk
+    sky: 0x5c4a2a,
     fog: 0x6b4f2a,
     fogNear: 20, fogFar: 90,
     groundColor: 0x4a3b22,
@@ -203,7 +231,8 @@ function scatterFoliage(scene, obstacles, config) {
   for (let i = 0; i < treeCount; i++) {
     const x = (Math.random() - 0.5) * ARENA * 1.7;
     const z = (Math.random() - 0.5) * ARENA * 1.7;
-    if (Math.hypot(x, z) < 6) continue;
+    // Don't place trees inside the player spawn ring.
+    if (Math.hypot(x, z) < SPAWN_SAFE_RADIUS) continue;
     const trunkH = 5 + Math.random() * 4;
     const trunkR = 0.3 + Math.random() * 0.3;
     const tree = new THREE.Group();
@@ -230,7 +259,7 @@ function scatterFoliage(scene, obstacles, config) {
   for (let i = 0; i < 25; i++) {
     const x = (Math.random() - 0.5) * ARENA * 1.6;
     const z = (Math.random() - 0.5) * ARENA * 1.6;
-    if (Math.hypot(x, z) < 6) continue;
+    if (Math.hypot(x, z) < SPAWN_SAFE_RADIUS) continue;
     const r = 0.6 + Math.random() * 1.2;
     const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rockMat);
     rock.position.set(x, r * 0.5, z);
@@ -244,6 +273,7 @@ function scatterFoliage(scene, obstacles, config) {
   for (let i = 0; i < bushCount; i++) {
     const x = (Math.random() - 0.5) * ARENA * 1.8;
     const z = (Math.random() - 0.5) * ARENA * 1.8;
+    if (Math.hypot(x, z) < 4) continue;
     const r = 0.4 + Math.random() * 0.5;
     const bush = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 6), bushMat);
     bush.position.set(x, r * 0.5, z);
@@ -256,7 +286,6 @@ function scatterFoliage(scene, obstacles, config) {
 // LANDMARKS
 // ============================================================
 function buildRiver(scene, obstacles, props) {
-  // Blue water plane crossing the arena
   const riverGeo = new THREE.PlaneGeometry(ARENA * 2.4, 14, 1, 1);
   const riverMat = new THREE.MeshStandardMaterial({
     color: 0x2a8fb0, roughness: 0.2, metalness: 0.4,
@@ -269,7 +298,6 @@ function buildRiver(scene, obstacles, props) {
   scene.add(river);
   props.river = river;
 
-  // Bridge across
   const bridgeMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 1 });
   const deck = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 16), bridgeMat);
   deck.position.set(0, 0.4, 22);
@@ -285,7 +313,6 @@ function buildRiver(scene, obstacles, props) {
 function buildWatchTower(scene, obstacles, props, x, z) {
   const tower = new THREE.Group();
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 1 });
-  // 4 legs
   for (let i = 0; i < 4; i++) {
     const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.4, 6, 0.4), woodMat);
@@ -293,12 +320,10 @@ function buildWatchTower(scene, obstacles, props, x, z) {
     leg.castShadow = true;
     tower.add(leg);
   }
-  // platform
   const platform = new THREE.Mesh(new THREE.BoxGeometry(5, 0.4, 5), woodMat);
   platform.position.y = 6;
   platform.castShadow = true;
   tower.add(platform);
-  // roof
   const roof = new THREE.Mesh(new THREE.ConeGeometry(4, 2.5, 4), new THREE.MeshStandardMaterial({ color: 0x3a2a18 }));
   roof.position.y = 7.5;
   roof.rotation.y = Math.PI / 4;
@@ -309,7 +334,6 @@ function buildWatchTower(scene, obstacles, props, x, z) {
 }
 
 function buildCartelCamp(scene, obstacles, props) {
-  // central tent / warlord throne
   const tent = new THREE.Group();
   const tentMat = new THREE.MeshStandardMaterial({ color: 0x4a1c1c, roughness: 1 });
   const peak = new THREE.Mesh(new THREE.ConeGeometry(5, 5, 6), tentMat);
@@ -320,7 +344,6 @@ function buildCartelCamp(scene, obstacles, props) {
   scene.add(tent);
   obstacles.push({ mesh: tent, radius: 4.5, x: 0, z: -25 });
 
-  // crates scattered around
   const crateMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 1 });
   const crateSpots = [[-6, -18], [-10, -22], [-8, -14], [10, -20], [12, -16], [6, -22]];
   for (const [cx, cz] of crateSpots) {
@@ -332,8 +355,8 @@ function buildCartelCamp(scene, obstacles, props) {
   }
 }
 
-function buildOutpost(scene, obstacles, props) {
-  // central hut
+// Outpost is now positioned away from origin by default.
+function buildOutpost(scene, obstacles, props, cx = 0, cz = 0) {
   const hutMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 1 });
   const hut = new THREE.Group();
   const base = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 8), hutMat);
@@ -344,17 +367,16 @@ function buildOutpost(scene, obstacles, props) {
   roof.position.y = 5.5;
   roof.rotation.y = Math.PI / 4;
   hut.add(roof);
-  hut.position.set(0, 0, 0);
+  hut.position.set(cx, 0, cz);
   scene.add(hut);
-  obstacles.push({ mesh: hut, radius: 5, x: 0, z: 0 });
+  obstacles.push({ mesh: hut, radius: 5, x: cx, z: cz });
 
-  // sandbag perimeter
   const sandMat = new THREE.MeshStandardMaterial({ color: 0x8a7842, roughness: 1 });
   for (let i = 0; i < 16; i++) {
     const ang = (i / 16) * Math.PI * 2;
     const r = 11;
-    const sx = Math.cos(ang) * r;
-    const sz = Math.sin(ang) * r;
+    const sx = cx + Math.cos(ang) * r;
+    const sz = cz + Math.sin(ang) * r;
     const sb = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 0.8), sandMat);
     sb.position.set(sx, 0.4, sz);
     sb.rotation.y = ang + Math.PI / 2;
@@ -365,7 +387,6 @@ function buildOutpost(scene, obstacles, props) {
 }
 
 function buildTempleRuins(scene, obstacles, props) {
-  // Stone pillars in a circle
   const stoneMat = new THREE.MeshStandardMaterial({ color: 0x9e9484, roughness: 1 });
   for (let i = 0; i < 6; i++) {
     const ang = (i / 6) * Math.PI * 2;
@@ -379,7 +400,6 @@ function buildTempleRuins(scene, obstacles, props) {
     scene.add(pillar);
     obstacles.push({ mesh: pillar, radius: 1.0, x: px, z: pz });
   }
-  // Central altar
   const altar = new THREE.Mesh(new THREE.BoxGeometry(4, 1.4, 4), stoneMat);
   altar.position.set(-30, 0.7, -30);
   altar.castShadow = true;
@@ -389,13 +409,11 @@ function buildTempleRuins(scene, obstacles, props) {
 
 function buildCartelOutpost(scene, obstacles, props) {
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2e1a, roughness: 1 });
-  // shack
   const shack = new THREE.Mesh(new THREE.BoxGeometry(7, 4, 5), woodMat);
   shack.position.set(25, 2, 20);
   shack.castShadow = true;
   scene.add(shack);
   obstacles.push({ mesh: shack, radius: 4, x: 25, z: 20 });
-  // truck (suggestion of)
   const truckBody = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.4, 5), new THREE.MeshStandardMaterial({ color: 0x3a4a3a }));
   truckBody.position.set(20, 1.2, 14);
   truckBody.castShadow = true;
@@ -415,14 +433,12 @@ function buildAmmoCrate(scene, props, x, z) {
   box.position.y = 0.5;
   box.castShadow = true;
   g.add(box);
-  // gold accent stripe
   const stripe = new THREE.Mesh(
     new THREE.BoxGeometry(1.22, 0.18, 0.82),
     new THREE.MeshStandardMaterial({ color: 0xffc857, emissive: 0xffc857, emissiveIntensity: 0.3 }),
   );
   stripe.position.y = 0.5;
   g.add(stripe);
-  // glowing icon plate
   const plate = new THREE.Mesh(
     new THREE.PlaneGeometry(0.5, 0.5),
     new THREE.MeshBasicMaterial({ color: 0xffc857 }),
@@ -447,7 +463,6 @@ function buildMedkit(scene, props, x, z) {
   box.position.y = 0.35;
   box.castShadow = true;
   g.add(box);
-  // red cross
   const v = new THREE.Mesh(
     new THREE.BoxGeometry(0.15, 0.5, 0.05),
     new THREE.MeshBasicMaterial({ color: 0xff4d5e }),
@@ -460,7 +475,6 @@ function buildMedkit(scene, props, x, z) {
   );
   h.position.set(0, 0.35, 0.32);
   g.add(h);
-  // glow ring
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.8, 1.0, 24),
     new THREE.MeshBasicMaterial({ color: 0xff4d5e, transparent: true, opacity: 0.4, side: THREE.DoubleSide }),
@@ -493,7 +507,6 @@ function buildBarrel(scene, obstacles, props, x, z) {
   );
   top.position.y = 1.42;
   g.add(top);
-  // hazard stripe
   const stripe = new THREE.Mesh(
     new THREE.CylinderGeometry(0.56, 0.56, 0.18, 12),
     new THREE.MeshBasicMaterial({ color: 0xffc857 }),
@@ -560,7 +573,6 @@ function buildCaptureFlag(scene, props, x, z) {
   );
   flag.position.set(1.2, 4, 0);
   g.add(flag);
-  // glow base
   const base = new THREE.Mesh(
     new THREE.CylinderGeometry(2.5, 2.5, 0.1, 24),
     new THREE.MeshBasicMaterial({ color: 0xc8ff5d, transparent: true, opacity: 0.25 }),
@@ -573,25 +585,22 @@ function buildCaptureFlag(scene, props, x, z) {
 }
 
 // ============================================================
-// AMBIENT ANIMATIONS (torches flicker, pickups bob, water moves)
+// AMBIENT ANIMATIONS
 // ============================================================
 function makeAmbient(config, props) {
   return {
     update(dt) {
       const t = performance.now() * 0.001;
-      // torch flicker
       for (const tr of props.torches) {
         tr.flame.scale.y = 1 + Math.sin(t * 14 + tr.x) * 0.18 + Math.random() * 0.08;
         tr.flameCore.scale.y = 1 + Math.sin(t * 18 + tr.z) * 0.22 + Math.random() * 0.08;
         tr.light.intensity = 1.2 + Math.sin(t * 12 + tr.x) * 0.4 + Math.random() * 0.2;
       }
-      // ammo crate hover + spin
       for (const c of props.ammoCrates) {
         if (c.used && performance.now() < c.cooldownUntil) continue;
         c.mesh.position.y = Math.sin(t * 2 + c.x) * 0.15;
         c.mesh.rotation.y += dt * 0.6;
       }
-      // medkit bob + ring pulse
       for (const m of props.medkits) {
         if (m.used && performance.now() < m.cooldownUntil) continue;
         m.mesh.position.y = 0.2 + Math.sin(t * 3 + m.z) * 0.15;
@@ -603,13 +612,11 @@ function makeAmbient(config, props) {
           ring.material.opacity = 0.3 + Math.sin(t * 4 + m.z) * 0.2;
         }
       }
-      // flag wave
       for (const f of props.flags) {
         f.flag.rotation.y = Math.sin(t * 2) * 0.2;
         const s = 1 + Math.sin(t * 3) * 0.05;
         f.base.scale.set(s, 1, s);
       }
-      // river shimmer
       if (props.river) {
         props.river.material.opacity = 0.78 + Math.sin(t * 1.6) * 0.08;
       }
