@@ -1,18 +1,30 @@
 // =================================================================
 // APP ENTRY — module-side. Owns the real auth submit handler.
-// The pre-boot inline script in index.html owns the *click* binding
-// and forwards into `window.__jungleHandleAuthSubmit`. This split is
-// what makes the auth UI survive even when modules load slowly.
+//
+// IMPORTANT BOOT STRATEGY:
+//   Auth must work even if three.js / game code fails to load.
+//   So we only import auth.js + lobby.js up front. game.js (which
+//   pulls in three.js via the importmap) is imported LAZILY the
+//   first time the user actually starts a mission or enters the world.
 // =================================================================
 import { waitForSupabaseGlobal } from './supabaseClient.js';
 
-// We import auth.js / lobby.js / game.js LAZILY (after we've confirmed
-// the supabase global is on the page). This way, if the Supabase script
-// failed to download, we can still surface a clear error to the user
-// instead of dying inside a top-level module import.
 let Auth;
 let initLobby, showLobby, hideLobby, refreshLobby, showToast;
-let startMission, startWorld;
+
+// Lazy game module — loaded on first mission launch.
+let gameModulePromise = null;
+function loadGameModule() {
+  if (!gameModulePromise) {
+    gameModulePromise = import('./game.js').catch((err) => {
+      console.error('[boot] game.js failed to load:', err);
+      // Reset so a retry can attempt again
+      gameModulePromise = null;
+      throw err;
+    });
+  }
+  return gameModulePromise;
+}
 
 // =========================================================
 // Signal "module loaded" to the pre-boot script ASAP, before
@@ -27,7 +39,7 @@ if (typeof window.__jungleClearBanner === 'function') window.__jungleClearBanner
 
 (function clearStaleMsg(){
   var el = document.getElementById('authMessage');
-  if (el && /still loading|connecting|loading game|network slow|game modules/i.test(el.textContent || '')) {
+  if (el && /still loading|connecting|loading game|network slow|game modules|background init/i.test(el.textContent || '')) {
     el.textContent = '';
     el.className = 'auth-msg';
     el.style.display = 'none';
@@ -38,75 +50,89 @@ if (typeof window.__jungleClearBanner === 'function') window.__jungleClearBanner
 // MAIN
 // =========================================================
 (async function main() {
-  try {
-    // Wait for the Supabase UMD global to be available (the inline
-    // <script> in index.html injects it from a regular CDN URL).
-    const ok = await waitForSupabaseGlobal(15000);
-    if (!ok) {
-      // Even if supabase didn't load, set up the auth UI shell so
-      // the user gets a helpful error when they tap Sign In.
-      setupAuthUI();
-      setMessage('Supabase library failed to load from the CDN. Check your internet and hard refresh the page.', 'error');
-      console.error('[boot] supabase global never appeared');
-      // Replay any pending click so the user sees the error immediately.
-      if (window.__JUNGLE_BOOT.pendingClick) {
-        window.__JUNGLE_BOOT.pendingClick = false;
-      }
-      return;
-    }
+  // Wait for the Supabase UMD global (the inline script in index.html
+  // injects it from a regular CDN URL).
+  const ok = await waitForSupabaseGlobal(15000);
+  if (!ok) {
+    try { setupAuthUI(); } catch (_) {}
+    setMessage('Supabase library failed to load. Check your internet and hard refresh the page.', 'error');
+    console.error('[boot] supabase global never appeared');
+    return;
+  }
 
-    // Now safe to lazy-import the rest of the app.
-    const [authMod, lobbyMod, gameMod] = await Promise.all([
+  // Load ONLY the modules we need for auth + lobby. game.js is lazy.
+  let authMod, lobbyMod;
+  try {
+    [authMod, lobbyMod] = await Promise.all([
       import('./auth.js'),
       import('./lobby.js'),
-      import('./game.js'),
     ]);
-    Auth = authMod.Auth;
-    initLobby   = lobbyMod.initLobby;
-    showLobby   = lobbyMod.showLobby;
-    hideLobby   = lobbyMod.hideLobby;
-    refreshLobby = lobbyMod.refreshLobby;
-    showToast   = lobbyMod.showToast;
-    startMission = gameMod.startMission;
-    startWorld   = gameMod.startWorld;
-
-    setupAuthUI();
-
-    initLobby({
-      onLaunchMission: (mission) => {
-        hideLobby();
-        startMission(mission, () => showLobby());
-      },
-      onEnterWorld: () => {
-        hideLobby();
-        startWorld(() => showLobby());
-      },
-    });
-
-    // Try to restore a previous session — non-blocking for the UI.
-    let user = null;
-    try { user = await Auth.init(); }
-    catch (e) { console.warn('Auth.init error:', e?.message); }
-
-    if (user) {
-      enterApp();
-    } else {
-      document.getElementById('authScreen').classList.add('active');
-    }
-
-    // Replay any click that happened while we were still loading.
-    if (window.__JUNGLE_BOOT.pendingClick) {
-      window.__JUNGLE_BOOT.pendingClick = false;
-      setTimeout(() => {
-        try { handleAuthSubmit(); }
-        catch (err) { console.error('Replaying pending click failed:', err); }
-      }, 80);
-    }
   } catch (err) {
-    console.error('Startup error:', err && err.message, err && err.stack);
+    console.error('[boot] auth/lobby import failed:', err);
     try { setupAuthUI(); } catch (_) {}
-    setMessage('Background init failed: ' + (err && err.message || err) + '. You can still try to sign in.', 'error');
+    setMessage('Could not load app code. Hard refresh the page (Cmd+Shift+R).', 'error');
+    return;
   }
+
+  Auth = authMod.Auth;
+  initLobby    = lobbyMod.initLobby;
+  showLobby    = lobbyMod.showLobby;
+  hideLobby    = lobbyMod.hideLobby;
+  refreshLobby = lobbyMod.refreshLobby;
+  showToast    = lobbyMod.showToast;
+
+  setupAuthUI();
+
+  initLobby({
+    onLaunchMission: async (mission) => {
+      try {
+        if (showToast) showToast('Loading mission…');
+        const mod = await loadGameModule();
+        hideLobby();
+        mod.startMission(mission, () => showLobby());
+      } catch (err) {
+        console.error('Mission load failed:', err);
+        if (showToast) showToast('Could not load game engine. Hard refresh and try again.');
+      }
+    },
+    onEnterWorld: async () => {
+      try {
+        if (showToast) showToast('Loading world…');
+        const mod = await loadGameModule();
+        hideLobby();
+        mod.startWorld(() => showLobby());
+      } catch (err) {
+        console.error('World load failed:', err);
+        if (showToast) showToast('Could not load game engine. Hard refresh and try again.');
+      }
+    },
+  });
+
+  // Try to restore a previous session — non-blocking for the UI.
+  let user = null;
+  try { user = await Auth.init(); }
+  catch (e) { console.warn('Auth.init error:', e?.message); }
+
+  if (user) {
+    enterApp();
+  } else {
+    document.getElementById('authScreen').classList.add('active');
+  }
+
+  // Replay any click that happened while we were still loading.
+  if (window.__JUNGLE_BOOT.pendingClick) {
+    window.__JUNGLE_BOOT.pendingClick = false;
+    setTimeout(() => {
+      try { handleAuthSubmit(); }
+      catch (err) { console.error('Replaying pending click failed:', err); }
+    }, 80);
+  }
+
+  // Best-effort warm-up of the game module in the background AFTER auth
+  // is done. If it fails, we ignore — user will retry on click.
+  setTimeout(() => {
+    loadGameModule().catch(() => { /* swallow — handled on click */ });
+  }, 1500);
 })();
 
 function enterApp() {
@@ -166,9 +192,6 @@ let currentMode = 'signin';
 let submitInFlight = false;
 
 function setupAuthUI() {
-  // Tab clicks are also wired by the pre-boot script (so they work even
-  // without modules), but we re-wire here to also sync currentMode in
-  // the module scope.
   const tabs = document.querySelectorAll('#authScreen .tab');
   const usernameField = document.getElementById('usernameField');
 
@@ -185,7 +208,6 @@ function setupAuthUI() {
     });
   });
 
-  // If pre-boot already set a mode, mirror it.
   if (window.__JUNGLE_CURRENT_MODE) currentMode = window.__JUNGLE_CURRENT_MODE;
 
   const forgotLink = document.getElementById('forgotLink');
@@ -214,8 +236,7 @@ function setupAuthUI() {
 }
 
 // =========================================================
-// THE REAL SUBMIT HANDLER (called via window.__jungleHandleAuthSubmit
-// from the pre-boot script's click/submit/Enter listeners)
+// THE REAL SUBMIT HANDLER
 // =========================================================
 async function handleAuthSubmit() {
   if (submitInFlight) {
@@ -223,15 +244,12 @@ async function handleAuthSubmit() {
     return;
   }
 
-  // If modules / Auth aren't ready yet, give a clear message instead
-  // of crashing silently.
   if (!Auth) {
     setMessage('Still finishing setup… your sign-in will run automatically in a moment.', 'info');
     window.__JUNGLE_BOOT.pendingClick = true;
     return;
   }
 
-  // Pick up the mode the user last selected (pre-boot maintains it).
   if (window.__JUNGLE_CURRENT_MODE) currentMode = window.__JUNGLE_CURRENT_MODE;
 
   const emailEl = document.getElementById('authEmail');
