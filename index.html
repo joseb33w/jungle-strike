@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=11" />
+<link rel="stylesheet" href="styles.css?v=12" />
 <style>
   html, body { background: #06180c; }
   body::before {
@@ -249,7 +249,7 @@
       function inject(src, onError) {
         var s = document.createElement('script');
         s.src = src;
-        s.async = false;          // keep order
+        s.async = false;
         s.crossOrigin = 'anonymous';
         s.onerror = function () {
           console.warn('[supabase] failed to load from', src);
@@ -266,7 +266,9 @@
     })();
   </script>
 
-  <!-- 2) THREE.js still needs to be an ES module — keep the importmap -->
+  <!-- 2) THREE.js still needs to be an ES module — keep the importmap.
+       game.js is loaded lazily, AFTER auth, so a failure here does
+       NOT block sign-in. -->
   <script type="importmap">
   {
     "imports": {
@@ -282,7 +284,7 @@
        =================================================== -->
   <script>
   (function preBoot(){
-    var BOOT_VERSION = 11;
+    var BOOT_VERSION = 12;
     window.__JUNGLE_BOOT = {
       version: BOOT_VERSION,
       moduleReady: false,
@@ -364,8 +366,8 @@
         }
 
         window.__JUNGLE_BOOT.pendingClick = true;
-        showAuthMessage('Connecting… signing you in as soon as the game finishes loading.', 'info');
-        setBanner('Loading game scripts… your sign-in will run automatically.', 'info');
+        showAuthMessage('Connecting… signing you in as soon as the app finishes loading.', 'info');
+        setBanner('Loading sign-in code… your tap will be replayed automatically.', 'info');
       }
 
       form.addEventListener('submit', handleClick);
@@ -379,8 +381,6 @@
         });
       });
 
-      // Tab switching also runs from the pre-boot script so it works
-      // even if modules never load.
       document.querySelectorAll('#authScreen .tab').forEach(function(t){
         t.addEventListener('click', function(){
           document.querySelectorAll('#authScreen .tab').forEach(function(x){ x.classList.remove('active'); });
@@ -404,29 +404,40 @@
       setupFallbackSubmit();
     }
 
-    // Generous watchdog — 25s, only shows banner if BOTH supabase and modules
-    // failed. On slow mobile networks, this is the realistic ceiling.
+    // Watchdog — 25s. Auth only needs Supabase + the small app.js bundle,
+    // NOT three.js. If those didn't load, give a clear message.
     setTimeout(function(){
       if (!window.__JUNGLE_BOOT.moduleReady) {
         var supaOk = !!(window.supabase && typeof window.supabase.createClient === 'function');
         if (!supaOk) {
-          setBanner('Network slow — Supabase library still loading. Tap Sign In and we\u2019ll retry automatically.', 'info');
+          setBanner('Network slow — sign-in library still loading. Tap Sign In and we\u2019ll retry automatically.', 'info');
         } else {
-          setBanner('Game modules taking longer than usual. Tap Sign In to retry once they finish.', 'info');
+          setBanner('App scripts taking longer than usual. Tap Sign In to retry.', 'info');
         }
       }
     }, 25000);
 
+    // Only surface script errors from OUR own /js/ files, AND only if
+    // auth modules haven't loaded yet. Game module failures are caught
+    // separately when the user actually clicks a mission.
     window.addEventListener('error', function(e){
-      if (e && e.filename && /\/js\//.test(e.filename)) {
-        setBanner('Script error: ' + (e.message || 'unknown') + ' — hard refresh the page.', 'error');
+      if (e && e.filename && /\/js\/(app|auth|lobby|supabaseClient|data)\.js/.test(e.filename)) {
+        if (!window.__JUNGLE_BOOT.moduleReady) {
+          setBanner('Script error: ' + (e.message || 'unknown') + ' — hard refresh the page.', 'error');
+        }
       }
     });
+
+    // Swallow rejections from the deferred game.js / three.js import —
+    // those are handled at click-time. Only show critical errors.
     window.addEventListener('unhandledrejection', function(e){
-      var msg = (e && e.reason && (e.reason.message || e.reason)) || 'unknown error';
+      var msg = (e && e.reason && (e.reason.message || e.reason)) || '';
       console.error('[unhandledrejection]', e);
-      if (typeof msg === 'string' && /import|module|fetch|network/i.test(msg)) {
-        setBanner('Load error: ' + msg + ' — hard refresh the page.', 'error');
+      // Game module rejections (three.js import etc.) are expected to
+      // be handled by the click handler — never red-banner them.
+      if (typeof msg === 'string' && /game\.js|three|worlds\.js|importing a module script/i.test(msg)) {
+        e.preventDefault();
+        return;
       }
     });
 
@@ -441,7 +452,8 @@
   })();
   </script>
 
-  <!-- 4) Module entry — cache-busted -->
-  <script type="module" src="js/app.js?v=11"></script>
+  <!-- 4) Module entry — cache-busted to v12 so the new deferred-loading
+       app.js actually downloads instead of being served from cache. -->
+  <script type="module" src="js/app.js?v=12"></script>
 </body>
 </html>
