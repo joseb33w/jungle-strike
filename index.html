@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=12" />
+<link rel="stylesheet" href="styles.css?v=14" />
 <style>
   html, body { background: #06180c; }
   body::before {
@@ -20,27 +20,9 @@
     z-index: -10;
     pointer-events: none;
   }
-  #bootBanner {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    z-index: 9999;
-    padding: 10px 14px;
-    background: #f0b020;
-    color: #0a1f10;
-    font-family: 'Rajdhani', system-ui, sans-serif;
-    font-weight: 700;
-    font-size: 0.95rem;
-    text-align: center;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
-    display: none;
-  }
-  #bootBanner.show { display: block; }
-  #bootBanner.error { background: #ff5970; color: #fff; }
-  #bootBanner.info { background: #2b6b3f; color: #fff; }
 </style>
 </head>
 <body>
-  <div id="bootBanner" role="status" aria-live="polite"></div>
 
   <!-- AUTH SCREEN -->
   <section id="authScreen" class="screen active">
@@ -237,38 +219,36 @@
 
   <!-- ===================================================
        1) LOAD SUPABASE AS A GLOBAL UMD SCRIPT
-          Plain <script> tag = works even when ES module
-          CDN imports fail in the preview wrapper. Has a
-          fallback CDN if the primary one is blocked.
+       Plain <script> tag — never depends on ES modules.
+       Falls back to unpkg if jsdelivr is blocked.
        =================================================== -->
   <script>
     (function loadSupabase() {
       var primary  = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
       var fallback = 'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js';
-
       function inject(src, onError) {
         var s = document.createElement('script');
         s.src = src;
         s.async = false;
         s.crossOrigin = 'anonymous';
         s.onerror = function () {
-          console.warn('[supabase] failed to load from', src);
+          console.warn('[supabase] failed from', src);
           if (onError) onError();
         };
         s.onload = function () {
-          window.__SUPABASE_GLOBAL_READY = true;
-          console.log('[supabase] global loaded from', src);
+          console.log('[supabase] loaded from', src);
         };
         document.head.appendChild(s);
       }
-
       inject(primary, function () { inject(fallback); });
     })();
   </script>
 
-  <!-- 2) THREE.js still needs to be an ES module — keep the importmap.
-       game.js is loaded lazily, AFTER auth, so a failure here does
-       NOT block sign-in. -->
+  <!-- ===================================================
+       2) THREE.js importmap (only used by game.js, loaded
+       lazily AFTER sign-in. If three.js fails, auth and
+       the lobby still work — only the FPS view fails.)
+       =================================================== -->
   <script type="importmap">
   {
     "imports": {
@@ -278,182 +258,442 @@
   </script>
 
   <!-- ===================================================
-       3) PRE-MODULE BOOT — runs synchronously before any
-       ES module. Owns the auth UI's submit handler and
-       queues clicks if the user taps before modules load.
+       3) AUTH — FULLY INLINE, NON-MODULE SCRIPT
+       Zero ES module dependencies. Runs synchronously.
+       Owns the entire sign-in / sign-up flow end-to-end.
+       Lazy-loads ./js/app.js (module) ONLY after sign-in.
        =================================================== -->
   <script>
-  (function preBoot(){
-    var BOOT_VERSION = 12;
-    window.__JUNGLE_BOOT = {
-      version: BOOT_VERSION,
-      moduleReady: false,
-      pendingClick: false,
-      bannerLocked: false
-    };
+  (function () {
+    'use strict';
 
-    function setBanner(text, kind) {
-      if (window.__JUNGLE_BOOT.bannerLocked && kind !== 'error') return;
-      var b = document.getElementById('bootBanner');
-      if (!b) return;
-      if (!text) { b.classList.remove('show','error','info'); b.textContent=''; return; }
-      b.textContent = text;
-      b.classList.remove('error','info');
-      b.classList.add('show');
-      if (kind === 'error') b.classList.add('error');
-      else if (kind === 'info') b.classList.add('info');
-    }
+    var SUPABASE_URL = 'https://xhhmxabftbyxrirvvihn.supabase.co';
+    var SUPABASE_ANON_KEY = 'sb_publishable_NZHoIxqqpSvVBP8MrLHCYA_gmg1AbN-';
+    var PROFILES_TABLE = 'uNMexs7BYTXQ2_jungle_strike_profiles';
+    var EMAIL_REDIRECT = 'https://sling-gogiapp.web.app/email-confirmed.html';
 
-    window.__jungleClearBanner = function() {
-      window.__JUNGLE_BOOT.bannerLocked = true;
-      var b = document.getElementById('bootBanner');
-      if (b) { b.classList.remove('show','error','info'); b.textContent = ''; }
-    };
+    var supa = null;
+    var currentMode = 'signin';
+    var submitting = false;
+    var moduleLoaded = false;
+    var sessionUser = null;
+    var sessionProfile = null;
 
-    function showAuthMessage(text, kind) {
-      var el = document.getElementById('authMessage');
+    function $(id) { return document.getElementById(id); }
+
+    function setMessage(text, kind) {
+      var el = $('authMessage');
       if (!el) return;
-      el.className = 'auth-msg ' + (kind || 'info');
+      el.className = 'auth-msg';
+      if (!text) {
+        el.textContent = '';
+        el.style.display = 'none';
+        return;
+      }
       el.textContent = text;
+      if (kind) el.classList.add(kind);
       el.style.display = 'block';
       el.style.visibility = 'visible';
       el.style.opacity = '1';
     }
 
-    function cleanStrayNodes() {
-      try {
-        var roots = [document.documentElement, document.body];
-        roots.forEach(function(root){
-          if (!root) return;
-          var toRemove = [];
-          for (var i=0; i<root.childNodes.length; i++) {
-            var n = root.childNodes[i];
-            if (n.nodeType === 3 && n.textContent.trim()) toRemove.push(n);
-          }
-          toRemove.forEach(function(n){ n.remove(); });
-        });
-      } catch(e) {}
-    }
-    cleanStrayNodes();
-    document.addEventListener('DOMContentLoaded', cleanStrayNodes);
-
-    function setupFallbackSubmit() {
-      var form = document.getElementById('authForm');
-      var btn = document.getElementById('authSubmit');
-      if (!form || !btn) return;
-
-      function runReal() {
-        try { window.__jungleHandleAuthSubmit(); }
-        catch (err) { showAuthMessage('Submit error: ' + (err && err.message || err), 'error'); }
+    function setActions(actions) {
+      var wrap = $('authActions');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      if (!actions || !actions.length) {
+        wrap.hidden = true;
+        return;
       }
+      wrap.hidden = false;
+      actions.forEach(function (a) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'auth-action-btn';
+        b.textContent = a.label;
+        b.addEventListener('click', a.onClick);
+        wrap.appendChild(b);
+      });
+    }
 
-      function handleClick(e) {
-        e.preventDefault();
-        e.stopPropagation();
+    function setSubmitLabel(text) {
+      var btn = $('authSubmit');
+      if (!btn) return;
+      var label = btn.querySelector('.btn-label');
+      if (label) label.textContent = text;
+      else btn.textContent = text;
+    }
 
-        var label = btn.querySelector('.btn-label');
-        if (label) {
-          var orig = label.textContent;
-          label.textContent = 'Working…';
-          setTimeout(function(){
-            if (label.textContent === 'Working…') label.textContent = orig;
-          }, 600);
+    function setSubmitting(state) {
+      submitting = state;
+      var btn = $('authSubmit');
+      if (btn) btn.disabled = state;
+    }
+
+    function friendlyError(err) {
+      var raw = ((err && err.message) || '').toLowerCase();
+      var code = ((err && (err.code || err.error_code)) || '').toLowerCase();
+      var out;
+      if (code === 'email_not_confirmed' || raw.indexOf('email not confirmed') >= 0 ||
+          raw.indexOf('not confirmed') >= 0 || raw.indexOf('confirm your email') >= 0) {
+        out = new Error('Your email is not confirmed yet. Check your inbox for the confirmation link, or tap Resend below.');
+        out.code = 'email_not_confirmed';
+        return out;
+      }
+      if (raw.indexOf('invalid login') >= 0 || raw.indexOf('invalid_credentials') >= 0 || code === 'invalid_credentials') {
+        out = new Error('That email or password is incorrect.');
+        out.code = 'invalid_credentials';
+        return out;
+      }
+      if (raw.indexOf('already registered') >= 0 || raw.indexOf('already exists') >= 0 || code === 'user_already_exists') {
+        out = new Error('An account with this email already exists. Try signing in instead.');
+        out.code = 'user_already_exists';
+        return out;
+      }
+      if (raw.indexOf('password') >= 0 && raw.indexOf('short') >= 0) {
+        out = new Error('Password must be at least 6 characters.');
+        out.code = 'weak_password';
+        return out;
+      }
+      if (raw.indexOf('rate') >= 0 || raw.indexOf('too many') >= 0) {
+        out = new Error('Too many attempts. Please wait a moment and try again.');
+        out.code = 'rate_limited';
+        return out;
+      }
+      if (raw.indexOf('network') >= 0 || raw.indexOf('fetch') >= 0 || raw.indexOf('failed to fetch') >= 0) {
+        out = new Error('Network problem. Check your connection and try again.');
+        out.code = 'network';
+        return out;
+      }
+      if (raw.indexOf('invalid email') >= 0 || code === 'invalid_email') {
+        out = new Error('That email address looks invalid.');
+        out.code = 'invalid_email';
+        return out;
+      }
+      out = new Error((err && err.message) || 'Something went wrong. Please try again.');
+      out.code = code || 'unknown';
+      return out;
+    }
+
+    function getSupabase() {
+      if (supa) return supa;
+      if (!window.supabase || typeof window.supabase.createClient !== 'function') return null;
+      supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      return supa;
+    }
+
+    function waitForSupabase(timeoutMs) {
+      var start = Date.now();
+      return new Promise(function (resolve) {
+        function tick() {
+          if (getSupabase()) return resolve(true);
+          if (Date.now() - start > timeoutMs) return resolve(false);
+          setTimeout(tick, 100);
         }
+        tick();
+      });
+    }
 
-        if (window.__JUNGLE_BOOT.moduleReady && typeof window.__jungleHandleAuthSubmit === 'function') {
-          runReal();
+    function fallbackProfile(username, user) {
+      return {
+        id: null,
+        username: username || (user && user.email && user.email.split('@')[0]) || 'Player',
+        coins: 500,
+        kills_total: 0,
+        missions_completed: 0,
+        owned_weapons: ['pistol'],
+        equipped_weapon: 'pistol',
+        _fallback: true
+      };
+    }
+
+    async function loadOrCreateProfile(user, username) {
+      var s = getSupabase();
+      if (!s || !user) return fallbackProfile(username, user);
+      try {
+        var sel = await s.from(PROFILES_TABLE).select('*').eq('user_id', user.id).maybeSingle();
+        if (sel.data) return sel.data;
+      } catch (e) {
+        console.warn('[auth] profile select failed:', e && e.message);
+      }
+      var raw = username || (user.user_metadata && user.user_metadata.username) ||
+                (user.email && user.email.split('@')[0]) || 'Player';
+      var safeName = String(raw).replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'Player';
+      try {
+        var ins = await s.from(PROFILES_TABLE).insert({
+          username: safeName,
+          coins: 500,
+          kills_total: 0,
+          missions_completed: 0,
+          owned_weapons: ['pistol'],
+          equipped_weapon: 'pistol'
+        }).select('*').single();
+        if (ins.data) return ins.data;
+      } catch (e) {
+        console.warn('[auth] profile insert failed:', e && e.message);
+        try {
+          var again = await s.from(PROFILES_TABLE).select('*').eq('user_id', user.id).maybeSingle();
+          if (again.data) return again.data;
+        } catch (_) {}
+      }
+      return fallbackProfile(safeName, user);
+    }
+
+    async function loadAppModule() {
+      if (moduleLoaded && window.__JUNGLE_APP) return window.__JUNGLE_APP;
+      var mod = await import('./js/app.js?v=14');
+      moduleLoaded = true;
+      window.__JUNGLE_APP = mod;
+      return mod;
+    }
+
+    async function enterApp() {
+      try {
+        var mod = await loadAppModule();
+        if (mod && typeof mod.bootWithSession === 'function') {
+          await mod.bootWithSession({
+            user: sessionUser,
+            profile: sessionProfile,
+            supabase: getSupabase()
+          });
+        } else {
+          // Bare-minimum fallback if app.js export is missing
+          $('authScreen').classList.remove('active');
+          $('lobbyScreen').classList.add('active');
+          $('lobbyHello').textContent = 'Welcome, ' + (sessionProfile && sessionProfile.username || 'Player');
+        }
+      } catch (err) {
+        console.error('[auth] enterApp failed:', err);
+        setMessage('Signed in, but the menu failed to load. Hard refresh (Ctrl/Cmd+Shift+R) to retry.', 'error');
+      }
+    }
+
+    async function handleSubmit() {
+      if (submitting) return;
+
+      var ready = await waitForSupabase(2000);
+      if (!ready) {
+        setMessage('Connecting to server…', 'info');
+        var ok = await waitForSupabase(15000);
+        if (!ok) {
+          setMessage('Could not connect to server. Check your internet and hard refresh the page.', 'error');
           return;
         }
-
-        window.__JUNGLE_BOOT.pendingClick = true;
-        showAuthMessage('Connecting… signing you in as soon as the app finishes loading.', 'info');
-        setBanner('Loading sign-in code… your tap will be replayed automatically.', 'info');
+        setMessage('', '');
       }
 
-      form.addEventListener('submit', handleClick);
-      btn.addEventListener('click', handleClick);
+      var emailEl = $('authEmail');
+      var pwEl = $('authPassword');
+      var userEl = $('authUsername');
 
-      ['authEmail','authPassword','authUsername'].forEach(function(id){
-        var inp = document.getElementById(id);
-        if (!inp) return;
-        inp.addEventListener('keydown', function(ev){
-          if (ev.key === 'Enter') { ev.preventDefault(); handleClick(ev); }
-        });
-      });
+      var email = (emailEl && emailEl.value || '').trim();
+      var pw = (pwEl && pwEl.value) || '';
+      var username = (userEl && userEl.value || '').trim();
 
-      document.querySelectorAll('#authScreen .tab').forEach(function(t){
-        t.addEventListener('click', function(){
-          document.querySelectorAll('#authScreen .tab').forEach(function(x){ x.classList.remove('active'); });
+      setActions(null);
+
+      if (!email) { setMessage('Please enter your email.', 'error'); if (emailEl) emailEl.focus(); return; }
+      if (!pw)    { setMessage('Please enter your password.', 'error'); if (pwEl) pwEl.focus(); return; }
+      if (pw.length < 6) { setMessage('Your password needs to be at least 6 characters.', 'error'); if (pwEl) pwEl.focus(); return; }
+      if (currentMode === 'signup' && !username) { setMessage('Please choose a username.', 'error'); if (userEl) userEl.focus(); return; }
+
+      setMessage(currentMode === 'signin' ? 'Signing you in…' : 'Creating your account…', 'info');
+      setSubmitting(true);
+
+      try {
+        var s = getSupabase();
+        var cleanEmail = email.toLowerCase();
+
+        if (currentMode === 'signin') {
+          var resIn = await s.auth.signInWithPassword({ email: cleanEmail, password: pw });
+          if (resIn.error) throw resIn.error;
+
+          sessionUser = resIn.data && resIn.data.user;
+          if (!sessionUser) throw new Error('Sign in did not return a user. Please try again.');
+
+          sessionProfile = await loadOrCreateProfile(sessionUser, null);
+          var displayName = (sessionProfile && sessionProfile.username) || cleanEmail.split('@')[0];
+          setMessage('Welcome back, ' + displayName + '! Loading the menu…', 'success');
+          setTimeout(enterApp, 400);
+        } else {
+          var resUp = await s.auth.signUp({
+            email: cleanEmail,
+            password: pw,
+            options: {
+              emailRedirectTo: EMAIL_REDIRECT,
+              data: { username: username }
+            }
+          });
+          if (resUp.error) throw resUp.error;
+
+          sessionUser = resUp.data && resUp.data.user;
+          var hasSession = !!(resUp.data && resUp.data.session);
+
+          if (sessionUser && hasSession) {
+            sessionProfile = await loadOrCreateProfile(sessionUser, username);
+            setMessage('Welcome, ' + username + '! Your account is ready. Loading the menu…', 'success');
+            setTimeout(enterApp, 500);
+          } else if (sessionUser && !hasSession) {
+            setMessage('Account created! We sent a confirmation link to ' + cleanEmail + '. Click it, then come back and sign in.', 'success');
+            setActions([{
+              label: 'Resend confirmation email',
+              onClick: async function () {
+                setMessage('Sending another confirmation email…', 'info');
+                try {
+                  var r = await s.auth.resend({
+                    type: 'signup',
+                    email: cleanEmail,
+                    options: { emailRedirectTo: EMAIL_REDIRECT }
+                  });
+                  if (r.error) throw r.error;
+                  setMessage('We re-sent the confirmation email to ' + cleanEmail + '. Check your inbox and spam folder.', 'success');
+                } catch (e2) {
+                  setMessage((e2 && e2.message) || 'Could not resend. Please try again later.', 'error');
+                }
+              }
+            }]);
+          } else {
+            setMessage('Account created. Please sign in.', 'success');
+          }
+        }
+      } catch (err) {
+        var fe = friendlyError(err);
+        setMessage(fe.message, 'error');
+        console.error('[auth] submit error:', err);
+
+        if (fe.code === 'email_not_confirmed') {
+          var s2 = getSupabase();
+          setActions([{
+            label: 'Resend confirmation email',
+            onClick: async function () {
+              setMessage('Sending another confirmation email…', 'info');
+              try {
+                var r = await s2.auth.resend({
+                  type: 'signup',
+                  email: email.toLowerCase(),
+                  options: { emailRedirectTo: EMAIL_REDIRECT }
+                });
+                if (r.error) throw r.error;
+                setMessage('We re-sent the confirmation email to ' + email + '. Tap the link, then sign in again.', 'success');
+              } catch (e3) {
+                setMessage((e3 && e3.message) || 'Could not resend. Please try again later.', 'error');
+              }
+            }
+          }]);
+        }
+      } finally {
+        setSubmitting(false);
+      }
+    }
+
+    function wireTabs() {
+      var tabs = document.querySelectorAll('#authScreen .tab');
+      var usernameField = $('usernameField');
+      tabs.forEach(function (t) {
+        t.addEventListener('click', function () {
+          tabs.forEach(function (x) { x.classList.remove('active'); });
           t.classList.add('active');
-          var mode = t.dataset.tab;
-          window.__JUNGLE_CURRENT_MODE = mode;
-          var uf = document.getElementById('usernameField');
-          if (uf) uf.hidden = (mode !== 'signup');
-          var label = document.querySelector('#authSubmit .btn-label');
-          if (label) label.textContent = (mode === 'signin') ? 'Sign In' : 'Create Account';
-          showAuthMessage('', '');
-          var actions = document.getElementById('authActions');
-          if (actions) { actions.hidden = true; actions.innerHTML = ''; }
+          currentMode = t.getAttribute('data-tab') || 'signin';
+          if (usernameField) usernameField.hidden = (currentMode !== 'signup');
+          setSubmitLabel(currentMode === 'signin' ? 'Sign In' : 'Create Account');
+          setMessage('', '');
+          setActions(null);
         });
       });
+      if (usernameField) usernameField.hidden = true;
+    }
+
+    function wireSubmit() {
+      var form = $('authForm');
+      var btn = $('authSubmit');
+
+      function onSubmit(e) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        handleSubmit();
+      }
+
+      if (form) form.addEventListener('submit', onSubmit);
+      if (btn) btn.addEventListener('click', onSubmit);
+
+      ['authEmail', 'authPassword', 'authUsername'].forEach(function (id) {
+        var inp = $(id);
+        if (!inp) return;
+        inp.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') { ev.preventDefault(); handleSubmit(); }
+        });
+      });
+    }
+
+    function wirePasswordToggle() {
+      var t = $('togglePwd');
+      var i = $('authPassword');
+      if (!t || !i) return;
+      t.addEventListener('click', function () {
+        if (i.type === 'password') { i.type = 'text'; t.textContent = '🙈'; }
+        else { i.type = 'password'; t.textContent = '👁'; }
+      });
+    }
+
+    function wireForgot() {
+      var link = $('forgotLink');
+      if (!link) return;
+      link.addEventListener('click', async function (e) {
+        e.preventDefault();
+        var ready = await waitForSupabase(8000);
+        if (!ready) { setMessage('Server still loading. Try again in a moment.', 'error'); return; }
+        var email = ($('authEmail').value || '').trim().toLowerCase();
+        if (!email) { setMessage('Type your email in the box above first, then tap Forgot password.', 'error'); return; }
+        setMessage('Sending you a password reset link…', 'info');
+        try {
+          var r = await getSupabase().auth.resetPasswordForEmail(email, { redirectTo: EMAIL_REDIRECT });
+          if (r.error) throw r.error;
+          setMessage('We sent a password reset link to ' + email + '. Check your inbox (and spam folder).', 'success');
+        } catch (err) {
+          setMessage((err && err.message) || 'Could not send reset email. Try again later.', 'error');
+        }
+      });
+    }
+
+    async function tryRestoreSession() {
+      var ready = await waitForSupabase(10000);
+      if (!ready) return false;
+      try {
+        var s = getSupabase();
+        var res = await s.auth.getSession();
+        var session = res && res.data && res.data.session;
+        if (session && session.user) {
+          sessionUser = session.user;
+          sessionProfile = await loadOrCreateProfile(sessionUser, null);
+          await enterApp();
+          return true;
+        }
+      } catch (e) {
+        console.warn('[auth] session restore error:', e && e.message);
+      }
+      return false;
+    }
+
+    function boot() {
+      wireTabs();
+      wireSubmit();
+      wirePasswordToggle();
+      wireForgot();
+      tryRestoreSession();
     }
 
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', setupFallbackSubmit);
+      document.addEventListener('DOMContentLoaded', boot);
     } else {
-      setupFallbackSubmit();
+      boot();
     }
 
-    // Watchdog — 25s. Auth only needs Supabase + the small app.js bundle,
-    // NOT three.js. If those didn't load, give a clear message.
-    setTimeout(function(){
-      if (!window.__JUNGLE_BOOT.moduleReady) {
-        var supaOk = !!(window.supabase && typeof window.supabase.createClient === 'function');
-        if (!supaOk) {
-          setBanner('Network slow — sign-in library still loading. Tap Sign In and we\u2019ll retry automatically.', 'info');
-        } else {
-          setBanner('App scripts taking longer than usual. Tap Sign In to retry.', 'info');
-        }
-      }
-    }, 25000);
-
-    // Only surface script errors from OUR own /js/ files, AND only if
-    // auth modules haven't loaded yet. Game module failures are caught
-    // separately when the user actually clicks a mission.
-    window.addEventListener('error', function(e){
-      if (e && e.filename && /\/js\/(app|auth|lobby|supabaseClient|data)\.js/.test(e.filename)) {
-        if (!window.__JUNGLE_BOOT.moduleReady) {
-          setBanner('Script error: ' + (e.message || 'unknown') + ' — hard refresh the page.', 'error');
-        }
-      }
-    });
-
-    // Swallow rejections from the deferred game.js / three.js import —
-    // those are handled at click-time. Only show critical errors.
-    window.addEventListener('unhandledrejection', function(e){
-      var msg = (e && e.reason && (e.reason.message || e.reason)) || '';
-      console.error('[unhandledrejection]', e);
-      // Game module rejections (three.js import etc.) are expected to
-      // be handled by the click handler — never red-banner them.
-      if (typeof msg === 'string' && /game\.js|three|worlds\.js|importing a module script/i.test(msg)) {
-        e.preventDefault();
-        return;
-      }
-    });
-
-    document.addEventListener('click', function(e) {
-      if (e.target && e.target.id === 'togglePwd') {
-        var input = document.getElementById('authPassword');
-        if (!input) return;
-        if (input.type === 'password') { input.type = 'text'; e.target.textContent = '🙈'; }
-        else { input.type = 'password'; e.target.textContent = '👁'; }
-      }
-    });
+    // Expose for debugging in DevTools
+    window.__JUNGLE_AUTH = {
+      submit: handleSubmit,
+      getSession: function () { return { user: sessionUser, profile: sessionProfile }; }
+    };
   })();
   </script>
 
-  <!-- 4) Module entry — cache-busted to v12 so the new deferred-loading
-       app.js actually downloads instead of being served from cache. -->
-  <script type="module" src="js/app.js?v=12"></script>
 </body>
 </html>
