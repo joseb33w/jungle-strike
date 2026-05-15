@@ -1,13 +1,42 @@
 import { supabase, TABLES } from './supabaseClient.js';
 
+// Translate raw Supabase errors into friendly text the player can act on.
+function friendlyError(err) {
+  const raw = (err?.message || '').toLowerCase();
+  if (!raw) return 'Something went wrong. Try again.';
+  if (raw.includes('invalid login') || raw.includes('invalid_credentials')) {
+    return 'That email or password is incorrect.';
+  }
+  if (raw.includes('email not confirmed') || raw.includes('not confirmed')) {
+    return 'Please confirm your email before signing in (check your inbox).';
+  }
+  if (raw.includes('user already registered') || raw.includes('already exists')) {
+    return 'An account with this email already exists. Try signing in.';
+  }
+  if (raw.includes('password') && raw.includes('short')) {
+    return 'Password must be at least 6 characters.';
+  }
+  if (raw.includes('rate') || raw.includes('too many')) {
+    return 'Too many attempts. Please wait a moment and try again.';
+  }
+  if (raw.includes('network') || raw.includes('fetch')) {
+    return 'Network problem. Check your connection and try again.';
+  }
+  if (raw.includes('invalid email') || raw.includes('email address')) {
+    return 'That email address looks invalid.';
+  }
+  return err?.message || 'Something went wrong. Try again.';
+}
+
 export const Auth = {
   user: null,
   profile: null,
 
   async init() {
     try {
-      const { data } = await supabase.auth.getUser();
-      this.user = data?.user || null;
+      const { data: sess } = await supabase.auth.getSession();
+      const session = sess?.session;
+      this.user = session?.user || null;
       if (this.user) {
         try { await this.loadProfile(); } catch (e) { console.warn('loadProfile (init):', e.message); }
       }
@@ -19,43 +48,58 @@ export const Auth = {
   },
 
   async signIn(email, password) {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    this.user = data.user;
-    // Never let a profile hiccup block sign-in — load it, but swallow errors
     try {
-      await this.loadProfile();
-    } catch (e) {
-      console.warn('Profile load after sign-in failed (continuing anyway):', e.message);
-      // Build a fallback in-memory profile so the lobby still works
-      this.profile = this._fallbackProfile();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: (email || '').trim().toLowerCase(),
+        password: password || '',
+      });
+      if (error) throw error;
+      this.user = data.user;
+      // Never let a profile hiccup block sign-in — load it, but swallow errors
+      try {
+        await this.loadProfile();
+      } catch (e) {
+        console.warn('Profile load after sign-in failed (continuing anyway):', e.message);
+        this.profile = this._fallbackProfile();
+      }
+      return this.user;
+    } catch (err) {
+      // Re-throw with a friendly message
+      const friendly = new Error(friendlyError(err));
+      friendly.original = err;
+      throw friendly;
     }
-    return this.user;
   },
 
   async signUp(email, password, username) {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: 'https://sling-gogiapp.web.app/email-confirmed.html',
-        data: { username },
-      },
-    });
-    if (error) throw error;
-    this.user = data.user;
-    if (this.user) {
-      try { await this.ensureProfile(username); }
-      catch (e) {
-        console.warn('Profile create on signup failed:', e.message);
-        this.profile = this._fallbackProfile(username);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: (email || '').trim().toLowerCase(),
+        password: password || '',
+        options: {
+          emailRedirectTo: 'https://sling-gogiapp.web.app/email-confirmed.html',
+          data: { username },
+        },
+      });
+      if (error) throw error;
+      this.user = data.user;
+      if (this.user) {
+        try { await this.ensureProfile(username); }
+        catch (e) {
+          console.warn('Profile create on signup failed:', e.message);
+          this.profile = this._fallbackProfile(username);
+        }
       }
+      return { user: this.user, session: data.session };
+    } catch (err) {
+      const friendly = new Error(friendlyError(err));
+      friendly.original = err;
+      throw friendly;
     }
-    return this.user;
   },
 
   async signOut() {
-    await supabase.auth.signOut();
+    try { await supabase.auth.signOut(); } catch (e) { console.warn(e); }
     this.user = null;
     this.profile = null;
   },
@@ -139,7 +183,6 @@ export const Auth = {
 
   async saveProfile(patch) {
     if (!this.profile || this.profile._fallback || !this.profile.id) {
-      // Update in-memory only
       if (this.profile) Object.assign(this.profile, patch);
       return this.profile;
     }
