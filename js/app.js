@@ -5,6 +5,17 @@ import { startMission, startWorld } from './game.js';
 (async function main() {
   try {
     setupAuthUI();
+
+    // Signal to the pre-boot script that modules are ready and the
+    // module-level submit handler is wired up. This MUST come before
+    // any await, so a slow Auth.init() can't block the button.
+    window.__JUNGLE_BOOT = window.__JUNGLE_BOOT || {};
+    window.__JUNGLE_BOOT.moduleReady = true;
+    window.__jungleHandleAuthSubmit = handleAuthSubmit;
+    // Clear any "still loading" banner the pre-boot script may have shown
+    const banner = document.getElementById('bootBanner');
+    if (banner) { banner.classList.remove('show', 'error'); banner.textContent = ''; }
+
     initLobby({
       onLaunchMission: (mission) => {
         hideLobby();
@@ -23,8 +34,8 @@ import { startMission, startWorld } from './game.js';
       document.getElementById('authScreen').classList.add('active');
     }
   } catch (err) {
-    console.error('Startup error:', err.message, err.stack);
-    showFatalError('Something went wrong loading the game. Please refresh the page.');
+    console.error('Startup error:', err && err.message, err && err.stack);
+    showFatalError('Something went wrong loading the game: ' + (err && err.message || err) + '. Hard-refresh the page (Ctrl+Shift+R / Cmd+Shift+R).');
   }
 })();
 
@@ -111,7 +122,7 @@ function setupAuthUI() {
         setMessage('Type your email in the box above first, then tap Forgot password.', 'error');
         return;
       }
-      setMessage('Sending you a password reset link…', 'info');
+      setMessage('Sending you a password reset link\u2026', 'info');
       try {
         await Auth.sendPasswordReset(email);
         setMessage(`We sent a password reset link to ${email}. Check your inbox (and spam folder).`, 'success');
@@ -122,43 +133,14 @@ function setupAuthUI() {
     });
   }
 
-  // Wire BOTH the form submit AND the button click. Some mobile browsers
-  // are unreliable about firing submit on a button tap, so we listen on both
-  // and de-dupe with submitInFlight.
-  const form = document.getElementById('authForm');
-  const submitBtn = document.getElementById('authSubmit');
-
-  if (form) {
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      handleAuthSubmit();
-    });
-  }
-  if (submitBtn) {
-    submitBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      handleAuthSubmit();
-    });
-  }
-
-  // Pressing Enter inside any input also submits
-  ['authEmail', 'authPassword', 'authUsername'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleAuthSubmit();
-      }
-    });
-  });
+  // NOTE: The pre-boot inline script in index.html already wires submit/click/Enter
+  // handlers to call window.__jungleHandleAuthSubmit. We don't add duplicate
+  // listeners here — they're handled by the boot script which delegates to us.
 }
 
 async function handleAuthSubmit() {
   if (submitInFlight) {
-    console.log('[auth] submit ignored — already in flight');
+    console.log('[auth] submit ignored \u2014 already in flight');
     return;
   }
 
@@ -180,7 +162,7 @@ async function handleAuthSubmit() {
   if (pw.length < 6) { setMessage('Your password needs to be at least 6 characters.', 'error'); pwEl?.focus(); return; }
   if (currentMode === 'signup' && !username) { setMessage('Please choose a username.', 'error'); userEl?.focus(); return; }
 
-  setMessage(currentMode === 'signin' ? 'Signing you in…' : 'Creating your account…', 'info');
+  setMessage(currentMode === 'signin' ? 'Signing you in\u2026' : 'Creating your account\u2026', 'info');
   submitInFlight = true;
   if (submit) submit.disabled = true;
 
@@ -188,11 +170,11 @@ async function handleAuthSubmit() {
     if (currentMode === 'signin') {
       console.log('[auth] calling Auth.signIn');
       await Auth.signIn(email, pw);
-      console.log('[auth] signIn result — user:', Auth.user?.id, 'profile:', Auth.profile?.username);
+      console.log('[auth] signIn result \u2014 user:', Auth.user?.id, 'profile:', Auth.profile?.username);
 
       if (Auth.user) {
         const name = Auth.profile?.username || email.split('@')[0];
-        setMessage(`Welcome back, ${name}! Taking you to the menu…`, 'success');
+        setMessage(`Welcome back, ${name}! Taking you to the menu\u2026`, 'success');
         setTimeout(() => {
           try {
             enterApp();
@@ -207,10 +189,10 @@ async function handleAuthSubmit() {
     } else {
       console.log('[auth] calling Auth.signUp');
       const res = await Auth.signUp(email, pw, username);
-      console.log('[auth] signUp result — user:', Auth.user?.id, 'session:', !!res?.session);
+      console.log('[auth] signUp result \u2014 user:', Auth.user?.id, 'session:', !!res?.session);
 
       if (Auth.user && res?.session) {
-        setMessage(`Welcome, ${username}! Your account is ready. Taking you to the menu…`, 'success');
+        setMessage(`Welcome, ${username}! Your account is ready. Taking you to the menu\u2026`, 'success');
         setTimeout(() => {
           try {
             enterApp();
@@ -223,7 +205,7 @@ async function handleAuthSubmit() {
         setMessage(`Account created! We sent a confirmation link to ${email}. Click it, then come back and sign in.`, 'success');
         setActions([
           { label: 'Resend confirmation email', onClick: async () => {
-              setMessage('Sending another confirmation email…', 'info');
+              setMessage('Sending another confirmation email\u2026', 'info');
               try {
                 await Auth.resendConfirmation(email);
                 setMessage(`We re-sent the confirmation email to ${email}. Check your inbox and spam folder.`, 'success');
@@ -245,7 +227,7 @@ async function handleAuthSubmit() {
     if (err?.code === 'email_not_confirmed') {
       setActions([
         { label: 'Resend confirmation email', onClick: async () => {
-            setMessage('Sending another confirmation email…', 'info');
+            setMessage('Sending another confirmation email\u2026', 'info');
             try {
               await Auth.resendConfirmation(email);
               setMessage(`We re-sent the confirmation email to ${email}. Tap the link inside, then try signing in again.`, 'success');
@@ -263,8 +245,19 @@ async function handleAuthSubmit() {
 }
 
 function showFatalError(msg) {
-  const el = document.createElement('div');
-  el.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;background:#101;z-index:999;color:white;padding:20px;font-family:sans-serif;text-align:center;';
-  el.innerHTML = `<div><h1>\u26A0\uFE0F Something went wrong</h1><p>${msg}</p></div>`;
-  document.body.appendChild(el);
+  // Show in the boot banner if available
+  const b = document.getElementById('bootBanner');
+  if (b) {
+    b.textContent = '\u26A0\uFE0F ' + msg;
+    b.classList.add('show', 'error');
+  }
+  // Also show in the auth message box if user is on auth screen
+  const am = document.getElementById('authMessage');
+  if (am) {
+    am.className = 'auth-msg error';
+    am.textContent = msg;
+    am.style.display = 'block';
+    am.style.visibility = 'visible';
+    am.style.opacity = '1';
+  }
 }
