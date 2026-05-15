@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=8" />
+<link rel="stylesheet" href="styles.css?v=9" />
 <style>
   html, body { background: #06180c; }
   body::before {
@@ -35,6 +35,7 @@
   }
   #bootBanner.show { display: block; }
   #bootBanner.error { background: #ff5970; color: #fff; }
+  #bootBanner.info { background: #2b6b3f; color: #fff; }
 </style>
 </head>
 <body>
@@ -249,18 +250,32 @@
        =================================================== -->
   <script>
   (function preBoot(){
-    var BOOT_VERSION = 9;
-    window.__JUNGLE_BOOT = { version: BOOT_VERSION, moduleReady: false, lastClickAt: 0 };
+    var BOOT_VERSION = 10;
+    window.__JUNGLE_BOOT = {
+      version: BOOT_VERSION,
+      moduleReady: false,
+      pendingClick: false,   // user clicked before modules loaded
+      bannerLocked: false    // once modules say ready, ignore any timeout banner
+    };
 
     function setBanner(text, kind) {
+      if (window.__JUNGLE_BOOT.bannerLocked && kind !== 'error') return;
       var b = document.getElementById('bootBanner');
       if (!b) return;
-      if (!text) { b.classList.remove('show','error'); b.textContent=''; return; }
+      if (!text) { b.classList.remove('show','error','info'); b.textContent=''; return; }
       b.textContent = text;
+      b.classList.remove('error','info');
       b.classList.add('show');
       if (kind === 'error') b.classList.add('error');
-      else b.classList.remove('error');
+      else if (kind === 'info') b.classList.add('info');
     }
+
+    // Expose so app.js can clear it when modules are ready
+    window.__jungleClearBanner = function() {
+      window.__JUNGLE_BOOT.bannerLocked = true;
+      var b = document.getElementById('bootBanner');
+      if (b) { b.classList.remove('show','error','info'); b.textContent = ''; }
+    };
 
     function showAuthMessage(text, kind) {
       var el = document.getElementById('authMessage');
@@ -270,6 +285,14 @@
       el.style.display = 'block';
       el.style.visibility = 'visible';
       el.style.opacity = '1';
+    }
+
+    function clearAuthMessage() {
+      var el = document.getElementById('authMessage');
+      if (!el) return;
+      el.textContent = '';
+      el.className = 'auth-msg';
+      el.style.display = 'none';
     }
 
     // Strip stray text nodes that the preview wrapper may inject
@@ -290,47 +313,48 @@
       } catch(e) {}
     }
     cleanStrayNodes();
-    // Run again after DOM ready in case more nodes get injected
     document.addEventListener('DOMContentLoaded', cleanStrayNodes);
 
-    // Wire submit handler IMMEDIATELY — does not depend on modules.
-    // If modules load, they'll register a real handler; this one defers to it.
     function setupFallbackSubmit() {
       var form = document.getElementById('authForm');
       var btn = document.getElementById('authSubmit');
       if (!form || !btn) return;
 
+      function runReal() {
+        try { window.__jungleHandleAuthSubmit(); }
+        catch (err) { showAuthMessage('Submit error: ' + (err && err.message || err), 'error'); }
+      }
+
       function handleClick(e) {
         e.preventDefault();
         e.stopPropagation();
-        window.__JUNGLE_BOOT.lastClickAt = Date.now();
 
-        // Visual confirmation that the click registered, no matter what
+        // Visual confirmation that the click registered
         var label = btn.querySelector('.btn-label');
         if (label) {
           var orig = label.textContent;
           label.textContent = 'Working…';
           setTimeout(function(){
             if (label.textContent === 'Working…') label.textContent = orig;
-          }, 400);
+          }, 600);
         }
 
-        // If modules loaded, let the module-level handler do its job
+        // Modules already ready? Run the real handler now.
         if (window.__JUNGLE_BOOT.moduleReady && typeof window.__jungleHandleAuthSubmit === 'function') {
-          try { window.__jungleHandleAuthSubmit(); }
-          catch (err) { showAuthMessage('Submit error: ' + (err && err.message || err), 'error'); }
+          runReal();
           return;
         }
 
-        // Modules NOT ready — show a clear error so the user is never left guessing
-        showAuthMessage('App is still loading. If this message stays, refresh the page (Ctrl+Shift+R / Cmd+Shift+R).', 'error');
-        setBanner('Game scripts still loading — please wait or hard refresh.', 'error');
+        // Otherwise mark this click as pending — modules will run it
+        // automatically the moment they finish loading.
+        window.__JUNGLE_BOOT.pendingClick = true;
+        showAuthMessage('Connecting… signing you in as soon as the game finishes loading.', 'info');
+        setBanner('Loading game scripts… your sign-in will run automatically.', 'info');
       }
 
       form.addEventListener('submit', handleClick);
       btn.addEventListener('click', handleClick);
 
-      // Enter key on inputs
       ['authEmail','authPassword','authUsername'].forEach(function(id){
         var inp = document.getElementById(id);
         if (!inp) return;
@@ -346,13 +370,13 @@
       setupFallbackSubmit();
     }
 
-    // Module-load watchdog: if modules haven't reported ready in 8s, show a banner.
+    // Module-load watchdog: 20s for slow mobile networks.
     setTimeout(function(){
       if (!window.__JUNGLE_BOOT.moduleReady) {
-        setBanner('⚠️ Game scripts failed to load. Hard refresh: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac).', 'error');
-        showAuthMessage('Scripts didn\u2019t load. Hard refresh the page (Ctrl+Shift+R or Cmd+Shift+R) to fix.', 'error');
+        setBanner('⚠️ Game scripts failed to load after 20 seconds. Check your internet and hard refresh (Ctrl+Shift+R / Cmd+Shift+R).', 'error');
+        showAuthMessage('Scripts didn\u2019t load. Check your connection and hard refresh the page.', 'error');
       }
-    }, 8000);
+    }, 20000);
 
     // Catch any uncaught module errors and surface them visibly
     window.addEventListener('error', function(e){
@@ -363,7 +387,6 @@
     window.addEventListener('unhandledrejection', function(e){
       var msg = (e && e.reason && (e.reason.message || e.reason)) || 'unknown error';
       console.error('[unhandledrejection]', e);
-      // Only show as banner if it looks like a script-load issue, not a normal API error
       if (typeof msg === 'string' && /import|module|fetch|network/i.test(msg)) {
         setBanner('Load error: ' + msg + ' — hard refresh the page.', 'error');
       }
@@ -382,6 +405,6 @@
   </script>
 
   <!-- Module entry — cache-busted with version query string -->
-  <script type="module" src="js/app.js?v=9"></script>
+  <script type="module" src="js/app.js?v=10"></script>
 </body>
 </html>
