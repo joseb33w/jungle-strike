@@ -23,7 +23,7 @@ import { startMission, startWorld } from './game.js';
       document.getElementById('authScreen').classList.add('active');
     }
   } catch (err) {
-    console.error('Bootstrap error:', err.message, err.stack);
+    console.error('Startup error:', err.message, err.stack);
     showFatalError('Something went wrong loading the game. Please refresh the page.');
   }
 })();
@@ -134,7 +134,7 @@ function setupAuthUI() {
         await Auth.signIn(email, pw);
         if (Auth.user) {
           const name = Auth.profile?.username || email.split('@')[0];
-          setMessage(`Welcome back, ${name}! Loading your dashboard…`, 'success');
+          setMessage(`Welcome back, ${name}! Taking you to the menu…`, 'success');
           setTimeout(() => {
             setMessage('');
             enterApp();
@@ -145,7 +145,7 @@ function setupAuthUI() {
       } else {
         const res = await Auth.signUp(email, pw, username);
         if (Auth.user && res?.session) {
-          setMessage(`Welcome, ${username}! Your account is ready. Loading your dashboard…`, 'success');
+          setMessage(`Welcome, ${username}! Your account is ready. Taking you to the menu…`, 'success');
           setTimeout(() => {
             setMessage('');
             enterApp();
