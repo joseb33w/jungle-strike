@@ -2,19 +2,44 @@ import { Auth } from './auth.js';
 import { initLobby, showLobby, hideLobby, refreshLobby, showToast } from './lobby.js';
 import { startMission, startWorld } from './game.js';
 
+// =========================================================
+// SIGNAL READY IMMEDIATELY — before any await, before any
+// init that could throw or hang. The Sign In button is now
+// guaranteed to call the real handler.
+// =========================================================
+window.__JUNGLE_BOOT = window.__JUNGLE_BOOT || {};
+window.__JUNGLE_BOOT.moduleReady = true;
+window.__jungleHandleAuthSubmit = handleAuthSubmit;
+
+// Immediately clear and LOCK the boot banner — no more "still loading"
+if (typeof window.__jungleClearBanner === 'function') {
+  window.__jungleClearBanner();
+}
+
+// Clear any "still loading" auth message that the pre-boot script may have shown
+(function clearStaleMsg(){
+  var el = document.getElementById('authMessage');
+  if (el && /still loading|connecting|loading game/i.test(el.textContent || '')) {
+    el.textContent = '';
+    el.className = 'auth-msg';
+    el.style.display = 'none';
+  }
+})();
+
+// If the user already clicked Sign In while modules were loading,
+// run their submit NOW automatically — they shouldn't have to re-tap.
+if (window.__JUNGLE_BOOT.pendingClick) {
+  window.__JUNGLE_BOOT.pendingClick = false;
+  // Small delay so DOM is fully ready
+  setTimeout(function(){
+    try { handleAuthSubmit(); }
+    catch (err) { console.error('Replaying pending click failed:', err); }
+  }, 50);
+}
+
 (async function main() {
   try {
     setupAuthUI();
-
-    // Signal to the pre-boot script that modules are ready and the
-    // module-level submit handler is wired up. This MUST come before
-    // any await, so a slow Auth.init() can't block the button.
-    window.__JUNGLE_BOOT = window.__JUNGLE_BOOT || {};
-    window.__JUNGLE_BOOT.moduleReady = true;
-    window.__jungleHandleAuthSubmit = handleAuthSubmit;
-    // Clear any "still loading" banner the pre-boot script may have shown
-    const banner = document.getElementById('bootBanner');
-    if (banner) { banner.classList.remove('show', 'error'); banner.textContent = ''; }
 
     initLobby({
       onLaunchMission: (mission) => {
@@ -35,7 +60,8 @@ import { startMission, startWorld } from './game.js';
     }
   } catch (err) {
     console.error('Startup error:', err && err.message, err && err.stack);
-    showFatalError('Something went wrong loading the game: ' + (err && err.message || err) + '. Hard-refresh the page (Ctrl+Shift+R / Cmd+Shift+R).');
+    // Don't block the user — just show an inline note. The auth form still works.
+    showAuthError('Background init failed (' + (err && err.message || err) + '). You can still sign in.');
   }
 })();
 
@@ -59,7 +85,6 @@ function setMessage(text, kind) {
   }
   el.textContent = text;
   if (kind) el.classList.add(kind);
-  // Force visible regardless of CSS quirks
   el.style.display = 'block';
   el.style.visibility = 'visible';
   el.style.opacity = '1';
@@ -112,7 +137,6 @@ function setupAuthUI() {
     });
   });
 
-  // Forgot password link
   const forgotLink = document.getElementById('forgotLink');
   if (forgotLink) {
     forgotLink.addEventListener('click', async (e) => {
@@ -132,10 +156,12 @@ function setupAuthUI() {
       }
     });
   }
+  // NOTE: submit/click/Enter handlers are wired by the pre-boot inline
+  // script in index.html, which delegates to window.__jungleHandleAuthSubmit.
+}
 
-  // NOTE: The pre-boot inline script in index.html already wires submit/click/Enter
-  // handlers to call window.__jungleHandleAuthSubmit. We don't add duplicate
-  // listeners here — they're handled by the boot script which delegates to us.
+function showAuthError(msg) {
+  setMessage(msg, 'error');
 }
 
 async function handleAuthSubmit() {
@@ -241,23 +267,5 @@ async function handleAuthSubmit() {
   } finally {
     submitInFlight = false;
     if (submit) submit.disabled = false;
-  }
-}
-
-function showFatalError(msg) {
-  // Show in the boot banner if available
-  const b = document.getElementById('bootBanner');
-  if (b) {
-    b.textContent = '\u26A0\uFE0F ' + msg;
-    b.classList.add('show', 'error');
-  }
-  // Also show in the auth message box if user is on auth screen
-  const am = document.getElementById('authMessage');
-  if (am) {
-    am.className = 'auth-msg error';
-    am.textContent = msg;
-    am.style.display = 'block';
-    am.style.visibility = 'visible';
-    am.style.opacity = '1';
   }
 }
