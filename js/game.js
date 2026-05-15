@@ -2,11 +2,14 @@ import * as THREE from 'three';
 import { WEAPONS, MISSIONS, WORLD_CONFIG } from './data.js';
 import { Auth } from './auth.js';
 import { supabase, TABLES } from './supabaseClient.js';
+import { buildWorld } from './worlds.js';
 
 let renderer, scene, camera, clock;
 let player, controls, weaponMesh, muzzleFlash;
 let enemies = [], obstacles = [], remoteMeshes = new Map();
 let bullets = [];
+let worldProps = null;
+let ambient = null;
 let canvas;
 
 let gameState = null;
@@ -28,9 +31,11 @@ export function startMission(mission, exitCallback) {
   onExit = exitCallback;
   showGameScreen();
   setupRenderer();
-  buildJungleScene();
+  const world = buildWorld(scene, mission.id);
+  obstacles = world.obstacles;
+  worldProps = world.props;
+  ambient = world.ambient;
   initPlayer();
-  spawnObstacles();
 
   gameState = {
     mode: 'mission',
@@ -39,6 +44,7 @@ export function startMission(mission, exitCallback) {
     coinsEarned: 0,
     startTime: performance.now(),
     health: 100,
+    maxHealth: 100,
     weapon: { ...WEAPONS[Auth.profile.equipped_weapon] },
     ammo: WEAPONS[Auth.profile.equipped_weapon].magazine,
     reserve: WEAPONS[Auth.profile.equipped_weapon].reserve,
@@ -48,6 +54,8 @@ export function startMission(mission, exitCallback) {
     waveIndex: 0,
     bossSpawned: false,
     bossDefeated: false,
+    spawnInvulnUntil: performance.now() + 1500,
+    captureProgress: 0,
   };
 
   buildWeaponView();
@@ -71,9 +79,11 @@ export function startWorld(exitCallback) {
   onExit = exitCallback;
   showGameScreen();
   setupRenderer();
-  buildJungleScene();
+  const world = buildWorld(scene, 'world');
+  obstacles = world.obstacles;
+  worldProps = world.props;
+  ambient = world.ambient;
   initPlayer();
-  spawnObstacles();
 
   gameState = {
     mode: 'world',
@@ -81,17 +91,20 @@ export function startWorld(exitCallback) {
     coinsEarned: 0,
     startTime: performance.now(),
     health: 100,
+    maxHealth: 100,
     weapon: { ...WEAPONS[Auth.profile.equipped_weapon] },
     ammo: WEAPONS[Auth.profile.equipped_weapon].magazine,
     reserve: WEAPONS[Auth.profile.equipped_weapon].reserve,
     reloading: false,
     lastShot: 0,
     over: false,
+    spawnInvulnUntil: performance.now() + 1500,
+    captureProgress: 0,
   };
 
   buildWeaponView();
-  setMissionHUD({ name: 'Open World', objective: 'Eliminate enemies & rival operatives' });
-  setObjective('Open jungle — kill bots & rivals to earn coins');
+  setMissionHUD({ name: 'Open World', objective: 'Eliminate enemies & hold the flag' });
+  setObjective('Capture the flag at center for bonus coins!');
   spawnEnemies(WORLD_CONFIG.enemyBots, WORLD_CONFIG.botHealth, WORLD_CONFIG.botSpeed);
 
   attachInput();
@@ -115,9 +128,6 @@ function setupRenderer() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x355c2c);
-  scene.fog = new THREE.Fog(0x355c2c, 18, 90);
-
   camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.1, 400);
   camera.position.set(0, 1.7, 0);
 
@@ -131,130 +141,6 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-}
-
-function buildJungleScene() {
-  // sky/ambient
-  const hemi = new THREE.HemisphereLight(0xa8d979, 0x224c1f, 0.85);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfffaf0, 0.85);
-  sun.position.set(40, 60, 30);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -50;
-  sun.shadow.camera.right = 50;
-  sun.shadow.camera.top = 50;
-  sun.shadow.camera.bottom = -50;
-  scene.add(sun);
-
-  // ground
-  const groundGeo = new THREE.PlaneGeometry(ARENA * 4, ARENA * 4, 60, 60);
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x2d5a23,
-    roughness: 1,
-    metalness: 0,
-  });
-  // gentle bumps
-  const pos = groundGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i);
-    pos.setZ(i, Math.sin(x * 0.08) * 0.3 + Math.cos(y * 0.07) * 0.3);
-  }
-  groundGeo.computeVertexNormals();
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  // boundary walls (stone-ish)
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1a2c14, roughness: 1 });
-  const halfArena = ARENA;
-  const wallH = 8;
-  [[0, halfArena], [0, -halfArena]].forEach(([x, z]) => {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(ARENA * 2, wallH, 1), wallMat);
-    w.position.set(x, wallH / 2, z);
-    w.castShadow = true;
-    scene.add(w);
-  });
-  [[halfArena, 0], [-halfArena, 0]].forEach(([x, z]) => {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(1, wallH, ARENA * 2), wallMat);
-    w.position.set(x, wallH / 2, z);
-    w.castShadow = true;
-    scene.add(w);
-  });
-}
-
-function spawnObstacles() {
-  obstacles = [];
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2e1a, roughness: 1 });
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0x2e7c33, roughness: 0.9 });
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x4d4a44, roughness: 1 });
-  const bushMat = new THREE.MeshStandardMaterial({ color: 0x357d3a, roughness: 1 });
-
-  for (let i = 0; i < 60; i++) {
-    const x = (Math.random() - 0.5) * ARENA * 1.7;
-    const z = (Math.random() - 0.5) * ARENA * 1.7;
-    if (Math.hypot(x, z) < 6) continue;
-    const trunkH = 5 + Math.random() * 4;
-    const trunkR = 0.3 + Math.random() * 0.3;
-    const tree = new THREE.Group();
-    const trunk = new THREE.Mesh(
-      new THREE.CylinderGeometry(trunkR * 0.7, trunkR, trunkH, 6),
-      trunkMat
-    );
-    trunk.position.y = trunkH / 2;
-    trunk.castShadow = true;
-    tree.add(trunk);
-    const leaves = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(2 + Math.random() * 1.4, 0),
-      leafMat
-    );
-    leaves.position.y = trunkH + 0.6;
-    leaves.scale.set(1, 0.8, 1);
-    leaves.castShadow = true;
-    tree.add(leaves);
-    tree.position.set(x, 0, z);
-    scene.add(tree);
-    obstacles.push({ mesh: tree, radius: trunkR + 0.4, x, z });
-  }
-
-  for (let i = 0; i < 25; i++) {
-    const x = (Math.random() - 0.5) * ARENA * 1.6;
-    const z = (Math.random() - 0.5) * ARENA * 1.6;
-    if (Math.hypot(x, z) < 6) continue;
-    const r = 0.6 + Math.random() * 1.2;
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rockMat);
-    rock.position.set(x, r * 0.5, z);
-    rock.castShadow = true;
-    rock.receiveShadow = true;
-    scene.add(rock);
-    obstacles.push({ mesh: rock, radius: r + 0.2, x, z });
-  }
-
-  for (let i = 0; i < 80; i++) {
-    const x = (Math.random() - 0.5) * ARENA * 1.8;
-    const z = (Math.random() - 0.5) * ARENA * 1.8;
-    const r = 0.4 + Math.random() * 0.5;
-    const bush = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 6), bushMat);
-    bush.position.set(x, r * 0.5, z);
-    bush.scale.set(1.4, 0.7, 1.4);
-    scene.add(bush);
-  }
-
-  // a small outpost / hut
-  const hutMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 1 });
-  const hut = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 6), hutMat);
-  base.position.y = 1.5;
-  base.castShadow = true;
-  hut.add(base);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(5, 2.5, 4), new THREE.MeshStandardMaterial({ color: 0x3a2a18 }));
-  roof.position.y = 4.25;
-  roof.rotation.y = Math.PI / 4;
-  hut.add(roof);
-  hut.position.set(15, 0, -10);
-  scene.add(hut);
-  obstacles.push({ mesh: hut, radius: 4, x: 15, z: -10 });
 }
 
 function initPlayer() {
@@ -288,7 +174,6 @@ function buildWeaponView() {
   grip.position.set(0.3, -0.45, -0.45);
   wg.add(grip);
 
-  // muzzle flash
   muzzleFlash = new THREE.Mesh(
     new THREE.SphereGeometry(0.08, 8, 8),
     new THREE.MeshBasicMaterial({ color: 0xffd84d, transparent: true, opacity: 0 })
@@ -296,7 +181,6 @@ function buildWeaponView() {
   muzzleFlash.position.set(0.3, -0.22, -1.4);
   wg.add(muzzleFlash);
 
-  // tweak per weapon
   const w = gameState.weapon;
   if (w.id === 'shotgun') { body.scale.set(1.2, 1.2, 0.8); barrel.scale.set(1.4, 1.4, 0.7); }
   if (w.id === 'sniper') { barrel.scale.set(0.9, 0.9, 1.5); body.scale.set(1, 1, 1.3); }
@@ -340,7 +224,6 @@ function spawnEnemy(health, speed, opts = {}) {
   eyeR.position.x = 0.1 * scale;
   group.add(eyeR);
 
-  // gun
   const gun = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.1 * scale, 0.6 * scale), new THREE.MeshStandardMaterial({ color: 0x111 }));
   gun.position.set(0.3 * scale, 1.1 * scale, 0.3 * scale);
   group.add(gun);
@@ -386,7 +269,6 @@ function attachInput() {
   document.addEventListener('mousedown', onMouseDown);
   document.addEventListener('mouseup', onMouseUp);
 
-  // mobile
   const stick = document.getElementById('moveStick');
   if (stick) {
     stick.addEventListener('touchstart', onStickStart);
@@ -418,7 +300,7 @@ function attachInput() {
 function detachInput() {
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
-  canvas.removeEventListener('click', onCanvasClick);
+  if (canvas) canvas.removeEventListener('click', onCanvasClick);
   document.removeEventListener('pointerlockchange', onPointerLock);
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('mousedown', onMouseDown);
@@ -491,8 +373,13 @@ function startLoop() {
   const tick = () => {
     raf = requestAnimationFrame(tick);
     const dt = Math.min(0.05, clock.getDelta());
-    update(dt);
-    renderer.render(scene, camera);
+    try {
+      update(dt);
+      if (ambient) ambient.update(dt);
+      renderer.render(scene, camera);
+    } catch (err) {
+      console.error('Game loop error:', err.message, err.stack);
+    }
   };
   tick();
 }
@@ -523,31 +410,26 @@ function update(dt) {
   const dx = nx * player.speed * sprint * moveMag * dt;
   const dz = nz * player.speed * sprint * moveMag * dt;
 
-  // collide
   const nextX = player.pos.x + dx;
   const nextZ = player.pos.z + dz;
   if (canMoveTo(nextX, player.pos.z)) player.pos.x = nextX;
   if (canMoveTo(player.pos.x, nextZ)) player.pos.z = nextZ;
 
-  // arena bounds
   const limit = ARENA - 1.5;
   player.pos.x = Math.max(-limit, Math.min(limit, player.pos.x));
   player.pos.z = Math.max(-limit, Math.min(limit, player.pos.z));
 
-  // bob
   const speed2 = (dx * dx + dz * dz);
   const bob = speed2 > 0 ? Math.sin(performance.now() * 0.01) * 0.04 : 0;
   camera.position.set(player.pos.x, player.pos.y + bob, player.pos.z);
   camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
 
-  // weapon sway
   if (weaponMesh) {
     weaponMesh.rotation.x = Math.sin(performance.now() * 0.005) * 0.005 + (gameState.reloading ? -0.5 : 0);
     weaponMesh.position.y = -0.02 + Math.sin(performance.now() * 0.008) * 0.01;
   }
   if (muzzleFlash) muzzleFlash.material.opacity *= 0.85;
 
-  // fire (auto)
   if (mouse.fireDown && gameState.weapon.auto) tryFire();
 
   // bullets
@@ -560,6 +442,14 @@ function update(dt) {
     return true;
   });
 
+  // ====== PICKUPS (ammo crates, medkits) ======
+  checkPickups();
+
+  // ====== CAPTURE FLAG (open world only) ======
+  if (gameState.mode === 'world' && worldProps?.flags?.length) {
+    updateCaptureFlag(dt);
+  }
+
   // enemies
   for (const e of enemies) {
     if (e.dead) continue;
@@ -568,7 +458,6 @@ function update(dt) {
     const dist = Math.hypot(dxe, dze);
     e.mesh.lookAt(player.pos.x, e.mesh.position.y + 1, player.pos.z);
 
-    // approach until in range
     if (dist > (e.boss ? 8 : 14)) {
       const stepX = (dxe / (dist || 1)) * e.speed * dt;
       const stepZ = (dze / (dist || 1)) * e.speed * dt;
@@ -578,7 +467,6 @@ function update(dt) {
       if (canMoveTo(e.mesh.position.x, nz2, e.radius)) e.mesh.position.z = nz2;
     }
 
-    // shoot at player
     const now = performance.now();
     if (dist < (e.boss ? 30 : 22) && now - e.lastShot > e.cooldown && hasLineOfSight(e.mesh.position, player.pos)) {
       e.lastShot = now;
@@ -620,15 +508,97 @@ function update(dt) {
       }
     }
   } else if (gameState.mode === 'world') {
-    // respawn bots when low
     if (aliveEnemies < 3) spawnEnemy(WORLD_CONFIG.botHealth, WORLD_CONFIG.botSpeed);
   }
 
   updateHUD();
 }
 
+function checkPickups() {
+  if (!worldProps) return;
+  const now = performance.now();
+
+  for (const c of worldProps.ammoCrates) {
+    if (c.used && now < c.cooldownUntil) {
+      if (c.mesh.visible) c.mesh.visible = false;
+      continue;
+    }
+    if (c.used && now >= c.cooldownUntil) {
+      c.used = false;
+      c.mesh.visible = true;
+    }
+    const d = Math.hypot(player.pos.x - c.x, player.pos.z - c.z);
+    if (d < c.radius + 0.6) {
+      // restock reserve to max
+      const max = gameState.weapon.reserve;
+      const before = gameState.reserve;
+      gameState.reserve = Math.max(gameState.reserve, max);
+      // top up by at least one full mag of reserve
+      gameState.reserve = before + gameState.weapon.magazine * 3;
+      c.used = true;
+      c.cooldownUntil = now + 15000;
+      flashPickup('🔫 +Ammo crate restocked');
+    }
+  }
+
+  for (const m of worldProps.medkits) {
+    if (m.used && now < m.cooldownUntil) {
+      if (m.mesh.visible) m.mesh.visible = false;
+      continue;
+    }
+    if (m.used && now >= m.cooldownUntil) {
+      m.used = false;
+      m.mesh.visible = true;
+    }
+    if (gameState.health >= gameState.maxHealth) continue;
+    const d = Math.hypot(player.pos.x - m.x, player.pos.z - m.z);
+    if (d < m.radius + 0.6) {
+      gameState.health = Math.min(gameState.maxHealth, gameState.health + 50);
+      m.used = true;
+      m.cooldownUntil = now + 20000;
+      flashPickup('❤️ +50 Health');
+    }
+  }
+}
+
+function updateCaptureFlag(dt) {
+  const f = worldProps.flags[0];
+  if (!f) return;
+  const d = Math.hypot(player.pos.x - f.x, player.pos.z - f.z);
+  const enemiesNear = enemies.some(e => !e.dead && Math.hypot(e.mesh.position.x - f.x, e.mesh.position.z - f.z) < 6);
+  if (d < f.radius && !enemiesNear) {
+    gameState.captureProgress = Math.min(100, gameState.captureProgress + dt * 14);
+    if (gameState.captureProgress >= 100) {
+      gameState.captureProgress = 0;
+      gameState.coinsEarned += 50;
+      flashPickup('🚩 Flag captured! +50 coins');
+      // move flag to a new random spot
+      const nx = (Math.random() - 0.5) * 50;
+      const nz = (Math.random() - 0.5) * 50;
+      f.x = nx; f.z = nz; f.mesh.position.set(nx, 0, nz);
+    } else {
+      setObjective(`🚩 Capturing flag… ${Math.round(gameState.captureProgress)}%`);
+    }
+  } else if (d < f.radius && enemiesNear) {
+    setObjective(`⚠️ Enemies near flag — clear them out!`);
+  } else if (gameState.captureProgress > 0) {
+    gameState.captureProgress = Math.max(0, gameState.captureProgress - dt * 8);
+  }
+}
+
+function flashPickup(text) {
+  const feed = document.getElementById('killFeed');
+  const item = document.createElement('div');
+  item.className = 'feed-item';
+  item.textContent = text;
+  item.style.borderColor = 'rgba(255,200,87,0.6)';
+  feed.appendChild(item);
+  setTimeout(() => item.remove(), 2000);
+}
+
 function canMoveTo(x, z, r = 0.5) {
   for (const o of obstacles) {
+    if (o.barrelRef?.exploded) continue;
     if (Math.hypot(x - o.x, z - o.z) < (o.radius + r)) return false;
   }
   return true;
@@ -644,6 +614,7 @@ function hasLineOfSight(from, to) {
     const px = from.x + dirX * t;
     const pz = from.z + dirZ * t;
     for (const o of obstacles) {
+      if (o.barrelRef?.exploded) continue;
       if (Math.hypot(px - o.x, pz - o.z) < o.radius) return false;
     }
   }
@@ -672,28 +643,48 @@ function tryFire() {
 
 function shootRay(w) {
   tmpDir.set(0, 0, -1).applyEuler(camera.rotation);
-  // spread
   tmpDir.x += (Math.random() - 0.5) * w.spread;
   tmpDir.y += (Math.random() - 0.5) * w.spread;
   tmpDir.z += (Math.random() - 0.5) * w.spread;
   tmpDir.normalize();
   const origin = camera.position.clone();
 
-  let hitEnemy = null, hitDist = Infinity;
+  let hitEnemy = null, hitDist = Infinity, hitBarrel = null;
+
+  // check enemies
   for (const e of enemies) {
     if (e.dead) continue;
     const d = rayHitsEnemy(origin, tmpDir, e);
-    if (d != null && d < hitDist && d < w.range) { hitDist = d; hitEnemy = e; }
+    if (d != null && d < hitDist && d < w.range) { hitDist = d; hitEnemy = e; hitBarrel = null; }
+  }
+  // check barrels (also raycastable)
+  if (worldProps?.barrels) {
+    for (const b of worldProps.barrels) {
+      if (b.exploded) continue;
+      const d = rayHitsCylinder(origin, tmpDir, b.x, b.z, 0, 1.5, b.radius);
+      if (d != null && d < hitDist && d < w.range) { hitDist = d; hitBarrel = b; hitEnemy = null; }
+    }
+  }
+
+  if (hitBarrel) {
+    damageBarrel(hitBarrel, w.damage);
+    return;
   }
   if (hitEnemy) {
     let dmg = w.damage;
     if (w.splash) {
-      // splash damages nearby
       const explosion = origin.clone().addScaledVector(tmpDir, hitDist);
       for (const e of enemies) {
         if (e.dead) continue;
         const d = e.mesh.position.distanceTo(explosion);
         if (d < w.splash) damageEnemy(e, dmg * (1 - d / w.splash));
+      }
+      // splash also damages barrels
+      if (worldProps?.barrels) {
+        for (const b of worldProps.barrels) {
+          if (b.exploded) continue;
+          if (Math.hypot(b.x - explosion.x, b.z - explosion.z) < w.splash) damageBarrel(b, dmg);
+        }
       }
     } else {
       damageEnemy(hitEnemy, dmg);
@@ -702,23 +693,21 @@ function shootRay(w) {
 }
 
 function rayHitsEnemy(origin, dir, enemy) {
-  // approximate enemy as vertical capsule
-  const ex = enemy.mesh.position.x;
-  const ez = enemy.mesh.position.z;
-  const eyTop = enemy.mesh.position.y + enemy.height;
-  const eyBot = enemy.mesh.position.y;
-  // intersect with vertical cylinder of given radius
+  return rayHitsCylinder(origin, dir, enemy.mesh.position.x, enemy.mesh.position.z, enemy.mesh.position.y, enemy.height, enemy.radius);
+}
+
+function rayHitsCylinder(origin, dir, cx, cz, cyBot, cyHeight, cr) {
   const ox = origin.x, oz = origin.z;
   const dx = dir.x, dz = dir.z;
   const a = dx * dx + dz * dz;
-  const b = 2 * ((ox - ex) * dx + (oz - ez) * dz);
-  const c = (ox - ex) ** 2 + (oz - ez) ** 2 - enemy.radius * enemy.radius;
+  const b = 2 * ((ox - cx) * dx + (oz - cz) * dz);
+  const c = (ox - cx) ** 2 + (oz - cz) ** 2 - cr * cr;
   const disc = b * b - 4 * a * c;
   if (disc < 0 || a === 0) return null;
   const t = (-b - Math.sqrt(disc)) / (2 * a);
   if (t <= 0) return null;
   const hitY = origin.y + dir.y * t;
-  if (hitY < eyBot || hitY > eyTop) return null;
+  if (hitY < cyBot || hitY > cyBot + cyHeight) return null;
   return t;
 }
 
@@ -736,6 +725,61 @@ function damageEnemy(e, dmg) {
   }
 }
 
+function damageBarrel(b, dmg) {
+  b.health -= dmg;
+  if (b.health <= 0 && !b.exploded) {
+    explodeBarrel(b);
+  }
+}
+
+function explodeBarrel(b) {
+  b.exploded = true;
+  // visual: orange flash sphere expanding
+  const flashGeo = new THREE.SphereGeometry(1, 16, 16);
+  const flashMat = new THREE.MeshBasicMaterial({ color: 0xffb84d, transparent: true, opacity: 1 });
+  const flash = new THREE.Mesh(flashGeo, flashMat);
+  flash.position.set(b.x, 1, b.z);
+  scene.add(flash);
+  // hide the barrel
+  if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
+
+  let t = 0;
+  const expand = () => {
+    t += 0.05;
+    if (t > 1) { scene.remove(flash); return; }
+    flash.scale.setScalar(1 + t * b.splashRadius);
+    flash.material.opacity = 1 - t;
+    requestAnimationFrame(expand);
+  };
+  expand();
+
+  // damage enemies in radius
+  for (const e of enemies) {
+    if (e.dead) continue;
+    const d = Math.hypot(e.mesh.position.x - b.x, e.mesh.position.z - b.z);
+    if (d < b.splashRadius) damageEnemy(e, b.splashDamage * (1 - d / b.splashRadius));
+  }
+  // damage other barrels (chain reaction)
+  if (worldProps?.barrels) {
+    for (const other of worldProps.barrels) {
+      if (other === b || other.exploded) continue;
+      const d = Math.hypot(other.x - b.x, other.z - b.z);
+      if (d < b.splashRadius) {
+        setTimeout(() => damageBarrel(other, b.splashDamage), 120);
+      }
+    }
+  }
+  // damage player if too close
+  const dPlayer = Math.hypot(player.pos.x - b.x, player.pos.z - b.z);
+  if (dPlayer < b.splashRadius && performance.now() > gameState.spawnInvulnUntil) {
+    const dmg = b.splashDamage * 0.6 * (1 - dPlayer / b.splashRadius);
+    gameState.health -= dmg;
+    flashHit();
+    if (gameState.health <= 0) endGame(false);
+  }
+  flashPickup('💥 Barrel detonated');
+}
+
 function onEnemyKilled(e) {
   gameState.kills += 1;
   const reward = gameState.mode === 'world'
@@ -744,7 +788,36 @@ function onEnemyKilled(e) {
   const bonus = e.boss ? 200 : 0;
   gameState.coinsEarned += reward + bonus;
   feedKill(e.boss ? '☠️ WARLORD ELIMINATED' : '🎯 Hostile down');
+
+  // chance to drop a medkit at the enemy's position
+  if (!e.boss && Math.random() < 0.18 && worldProps) {
+    spawnDroppedMedkit(e.mesh.position.x, e.mesh.position.z);
+  }
   updateHUD();
+}
+
+function spawnDroppedMedkit(x, z) {
+  const g = new THREE.Group();
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(0.6, 0.5, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0xf3eddc }),
+  );
+  box.position.y = 0.25;
+  g.add(box);
+  const v = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.35, 0.04), new THREE.MeshBasicMaterial({ color: 0xff4d5e }));
+  v.position.set(0, 0.25, 0.22);
+  g.add(v);
+  const h = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.1, 0.04), new THREE.MeshBasicMaterial({ color: 0xff4d5e }));
+  h.position.set(0, 0.25, 0.22);
+  g.add(h);
+  g.position.set(x, 0.1, z);
+  scene.add(g);
+  worldProps.medkits.push({
+    mesh: g, x, z, radius: 0.8,
+    used: false, cooldownUntil: 0,
+    dropped: true,
+    type: 'medkit',
+  });
 }
 
 function feedKill(text) {
@@ -769,14 +842,12 @@ function spawnBulletTracer() {
 }
 
 function enemyShoot(e) {
-  // hitscan with chance to miss
   const accuracy = 0.55 + Math.random() * 0.2;
-  if (Math.random() < accuracy) {
+  if (Math.random() < accuracy && performance.now() > gameState.spawnInvulnUntil) {
     gameState.health -= e.damage;
     flashHit();
     if (gameState.health <= 0) endGame(false);
   }
-  // visual tracer from enemy to player
   const start = e.mesh.position.clone(); start.y += 1;
   const dir = player.pos.clone().sub(start).normalize();
   const geo = new THREE.CylinderGeometry(0.02, 0.02, 1, 6);
@@ -826,24 +897,26 @@ async function endGame(victory, aborted = false) {
   const totalCoins = gameState.coinsEarned + (victory && gameState.mission ? (gameState.mission.bonus || 0) : 0);
   const dur = Math.round((performance.now() - gameState.startTime) / 1000);
 
-  // persist
-  await Auth.saveProfile({
-    coins: (Auth.profile.coins || 0) + totalCoins,
-    kills_total: (Auth.profile.kills_total || 0) + gameState.kills,
-    missions_completed: (Auth.profile.missions_completed || 0) + (victory && gameState.mode === 'mission' ? 1 : 0),
-  });
+  try {
+    await Auth.saveProfile({
+      coins: (Auth.profile.coins || 0) + totalCoins,
+      kills_total: (Auth.profile.kills_total || 0) + gameState.kills,
+      missions_completed: (Auth.profile.missions_completed || 0) + (victory && gameState.mode === 'mission' ? 1 : 0),
+    });
+  } catch (e) { console.error('Save profile failed:', e); }
 
   if (gameState.mode === 'mission') {
-    await supabase.from(TABLES.missionRuns).insert({
-      mission_id: gameState.mission.id,
-      kills: gameState.kills,
-      completed: victory,
-      coins_earned: totalCoins,
-      duration_seconds: dur,
-    });
+    try {
+      await supabase.from(TABLES.missionRuns).insert({
+        mission_id: gameState.mission.id,
+        kills: gameState.kills,
+        completed: victory,
+        coins_earned: totalCoins,
+        duration_seconds: dur,
+      });
+    } catch (e) { console.error('Save run failed:', e); }
   }
 
-  // overlay
   const ov = document.getElementById('gameOverlay');
   document.getElementById('overlayTitle').textContent = aborted
     ? 'Mission Aborted'
@@ -867,6 +940,11 @@ async function endGame(victory, aborted = false) {
 function returnToBase() {
   detachInput();
   cancelAnimationFrame(raf);
+  if (worldChannel) {
+    supabase.removeChannel(worldChannel);
+    worldChannel = null;
+  }
+  if (worldSyncInterval) { clearInterval(worldSyncInterval); worldSyncInterval = null; }
   if (renderer) renderer.dispose();
   if (scene) {
     while (scene.children.length) scene.remove(scene.children[0]);
@@ -874,6 +952,9 @@ function returnToBase() {
   enemies = [];
   obstacles = [];
   bullets = [];
+  worldProps = null;
+  ambient = null;
+  gameState = null;
   remoteMeshes.forEach(m => scene && scene.remove(m));
   remoteMeshes.clear();
   document.exitPointerLock?.();
@@ -901,19 +982,19 @@ function subscribeWorld() {
     })
     .subscribe();
 
-  // sync our pos every 600ms
   worldSyncInterval = setInterval(async () => {
     if (!gameState || gameState.over) return;
-    await supabase.from(TABLES.worldPlayers)
-      .update({
-        x: player.pos.x, y: player.pos.y, z: player.pos.z, ry: player.yaw,
-        last_seen: new Date().toISOString(),
-        world_kills: (Auth.profile.kills_total || 0) + gameState.kills,
-      })
-      .eq('user_id', Auth.user.id);
+    try {
+      await supabase.from(TABLES.worldPlayers)
+        .update({
+          x: player.pos.x, y: player.pos.y, z: player.pos.z, ry: player.yaw,
+          last_seen: new Date().toISOString(),
+          world_kills: (Auth.profile.kills_total || 0) + gameState.kills,
+        })
+        .eq('user_id', Auth.user.id);
+    } catch (e) { /* offline ok */ }
   }, 600);
 
-  // initial fetch
   fetchRemoteOnce();
 }
 
@@ -950,7 +1031,6 @@ function makeRemoteMesh(name) {
   head.position.y = 1.9;
   g.add(head);
 
-  // name tag (sprite)
   const cnv = document.createElement('canvas');
   cnv.width = 256; cnv.height = 64;
   const ctx = cnv.getContext('2d');
