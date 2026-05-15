@@ -17,7 +17,8 @@ import { startMission, startWorld } from './game.js';
     });
 
     const user = await Auth.init();
-    if (user && Auth.profile) {
+    // Enter the app as long as we have a user — profile loads in the background
+    if (user) {
       enterApp();
     } else {
       document.getElementById('authScreen').classList.add('active');
@@ -47,6 +48,7 @@ function setupAuthUI() {
       mode = t.dataset.tab;
       usernameField.hidden = mode !== 'signup';
       submitBtn.textContent = mode === 'signin' ? 'Deploy' : 'Enlist';
+      document.getElementById('authMessage').textContent = '';
     });
   });
 
@@ -56,20 +58,36 @@ function setupAuthUI() {
     const pw = document.getElementById('authPassword').value;
     const username = document.getElementById('authUsername').value.trim();
     const msg = document.getElementById('authMessage');
+    const submit = document.getElementById('authSubmit');
     msg.textContent = mode === 'signin' ? 'Authenticating…' : 'Creating account…';
+    submit.disabled = true;
     try {
       if (mode === 'signin') {
         await Auth.signIn(email, pw);
+        // If we got here, auth worked — enter the app no matter what
+        if (Auth.user) {
+          msg.textContent = '';
+          enterApp();
+        } else {
+          msg.textContent = 'Login failed: no user returned.';
+        }
       } else {
         if (!username) throw new Error('Choose a callsign.');
         await Auth.signUp(email, pw, username);
+        if (Auth.user) {
+          msg.textContent = '';
+          enterApp();
+        } else {
+          msg.textContent = 'Account created! Check your email to confirm, then sign in.';
+        }
       }
-      msg.textContent = '';
-      if (Auth.user && !Auth.profile) await Auth.loadProfile();
-      if (Auth.user) enterApp();
-      else msg.textContent = 'Check your email to confirm, then sign in.';
     } catch (err) {
-      msg.textContent = err.message || 'Something went wrong.';
+      // Show the REAL Supabase error so the user knows what's wrong
+      const text = err?.message || 'Something went wrong.';
+      msg.textContent = text;
+      console.error('Auth submit error:', err);
+    } finally {
+      submit.disabled = false;
     }
   });
 }
