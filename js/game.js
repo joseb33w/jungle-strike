@@ -123,6 +123,7 @@ function showGameScreen() {
   document.getElementById('authScreen').classList.remove('active');
   document.getElementById('gameScreen').classList.add('active');
   document.getElementById('gameOverlay').classList.add('hidden');
+  document.body.classList.add('game-active');
 }
 
 function setupRenderer() {
@@ -1086,6 +1087,7 @@ function returnToBase() {
   const ov = document.getElementById('gameOverlay');
   if (ov) ov.classList.add('hidden');
   document.getElementById('gameScreen').classList.remove('active');
+  document.body.classList.remove('game-active');
 
   // 9) Fire callback to switch back to lobby (and clear it so it can't double-fire)
   const cb = onExit;
