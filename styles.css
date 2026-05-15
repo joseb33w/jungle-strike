@@ -3,18 +3,19 @@
   --jungle: #14361f;
   --jungle-light: #2b6b3f;
   --bone: #ffffff;
-  --ink-muted: rgba(255, 255, 255, 0.92);
-  --ink-soft: rgba(255, 255, 255, 0.78);
-  --ink-faint: rgba(255, 255, 255, 0.65);
+  --ink-muted: rgba(255, 255, 255, 0.95);
+  --ink-soft: rgba(255, 255, 255, 0.85);
+  --ink-faint: rgba(255, 255, 255, 0.72);
   --accent: #e8ff8a;
   --accent-soft: #c8f060;
   --accent-2: #ff8a4d;
   --danger: #ff7585;
   --gold: #ffd166;
-  --panel: rgba(20, 38, 26, 0.82);
-  --border: rgba(232, 255, 138, 0.45);
-  --border-soft: rgba(255, 255, 255, 0.18);
+  --panel: rgba(28, 52, 34, 0.92);
+  --border: rgba(232, 255, 138, 0.55);
+  --border-soft: rgba(255, 255, 255, 0.22);
   --shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  --ink-dark: #0a1f10;
 }
 
 * { box-sizing: border-box; }
@@ -48,7 +49,7 @@ body.game-active { overflow: hidden; height: 100vh; }
 button, input { font-family: inherit; color: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
-/* Themed jungle scrollbar — applies to html/body so the page-level bar shows up everywhere */
+/* Themed jungle scrollbar */
 html::-webkit-scrollbar,
 body::-webkit-scrollbar,
 .screen::-webkit-scrollbar,
@@ -96,7 +97,7 @@ html, body, .screen, .scrollable {
 #gameScreen.active { display: block; }
 
 /* ============================================================
-   AUTH SCREEN
+   AUTH SCREEN — high contrast, solid colors only
    ============================================================ */
 #authScreen { display: none; }
 #authScreen.active {
@@ -163,7 +164,7 @@ html, body, .screen, .scrollable {
 }
 .auth-bg-vignette {
   position: absolute; inset: 0;
-  background: radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,0.2) 100%);
+  background: radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,0.15) 100%);
 }
 
 .auth-shell {
@@ -175,32 +176,19 @@ html, body, .screen, .scrollable {
 
 .auth-card {
   width: 100%;
-  background: linear-gradient(180deg, rgba(32, 58, 38, 0.95), rgba(22, 44, 28, 0.97));
-  border: 1.5px solid var(--border);
+  background: linear-gradient(180deg, #2a4a32 0%, #1f3a26 100%);
+  border: 2px solid var(--border);
   border-radius: 28px;
   padding: 32px 28px 22px;
   box-shadow:
     0 40px 100px rgba(0,0,0,0.55),
     inset 0 1px 0 rgba(255,255,255,0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   position: relative;
   animation: cardIn 0.6s cubic-bezier(.2,.9,.3,1.2) both;
 }
 @keyframes cardIn {
   from { opacity: 0; transform: translateY(20px) scale(0.96); }
   to { opacity: 1; transform: translateY(0) scale(1); }
-}
-.auth-card::before {
-  content: '';
-  position: absolute; inset: 0;
-  border-radius: 28px;
-  padding: 1.5px;
-  background: linear-gradient(135deg, rgba(232,255,138,0.7), transparent 40%, transparent 60%, rgba(255,138,77,0.45));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  pointer-events: none;
 }
 
 .auth-brand {
@@ -227,11 +215,10 @@ html, body, .screen, .scrollable {
   margin: 0 0 6px;
   text-transform: uppercase;
   letter-spacing: 0.24em;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   color: var(--accent);
   font-weight: 800;
   opacity: 1;
-  text-shadow: 0 0 12px rgba(232,255,138,0.35);
 }
 .auth-title {
   font-family: 'Black Ops One', sans-serif;
@@ -239,30 +226,30 @@ html, body, .screen, .scrollable {
   font-size: 2.4rem;
   line-height: 1;
   letter-spacing: 0.04em;
-  background: linear-gradient(135deg, #ffffff 0%, #f0ffa8 55%, #b8ee5a 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
+  color: var(--accent);
 }
 .auth-tagline {
   margin: 10px 0 0;
   color: #ffffff;
-  font-size: 1.02rem;
+  font-size: 1.05rem;
   line-height: 1.5;
   font-weight: 500;
   opacity: 1;
 }
 
+/* ============================================================
+   TABS — solid colors, ALWAYS readable
+   ============================================================ */
 .tabs {
   position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
   margin: 22px 0 22px;
-  background: rgba(0,0,0,0.55);
-  border: 1.5px solid rgba(232,255,138,0.25);
+  background: #0a1f10;
+  border: 2px solid rgba(232,255,138,0.35);
   border-radius: 14px;
   padding: 4px;
+  gap: 4px;
 }
 .tab {
   position: relative;
@@ -270,40 +257,35 @@ html, body, .screen, .scrollable {
   background: transparent;
   border: none;
   border-radius: 10px;
-  padding: 11px 10px;
+  padding: 12px 10px;
   font-weight: 800;
-  font-size: 0.98rem;
+  font-size: 1rem;
   letter-spacing: 0.05em;
   color: #ffffff;
-  opacity: 0.85;
-  transition: color 220ms ease, opacity 220ms ease;
+  transition: color 220ms ease;
 }
-.tab:hover { opacity: 1; }
-.tab.active { color: #07140a; opacity: 1; }
-.tab-indicator {
-  position: absolute;
-  top: 4px; bottom: 4px;
-  left: 4px;
-  width: calc(50% - 4px);
-  background: linear-gradient(135deg, var(--accent), var(--accent-soft));
-  border-radius: 10px;
+.tab:hover { color: var(--accent); }
+.tab.active {
+  color: var(--ink-dark);
+  background: linear-gradient(135deg, #e8ff8a, #c8f060);
   box-shadow: 0 4px 14px rgba(200,255,93,0.45);
-  transition: transform 320ms cubic-bezier(.2,.9,.3,1.2);
-  z-index: 1;
 }
-.tabs[data-active="signup"] .tab-indicator { transform: translateX(100%); }
+/* Hide the old separate indicator — the active tab IS the indicator now */
+.tab-indicator { display: none; }
 
-.auth-form { display: grid; gap: 14px; }
+/* ============================================================
+   FIELDS
+   ============================================================ */
+.auth-form { display: grid; gap: 16px; }
 .field { display: grid; gap: 8px; }
 .field-label {
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--accent);
+  letter-spacing: 0.18em;
+  color: #e8ff8a;
   font-weight: 800;
   opacity: 1;
   padding-left: 4px;
-  text-shadow: 0 0 8px rgba(232,255,138,0.25);
 }
 .field-label-row {
   display: flex;
@@ -312,15 +294,14 @@ html, body, .screen, .scrollable {
   gap: 10px;
 }
 .forgot-link {
-  font-size: 0.82rem;
-  color: var(--accent);
+  font-size: 0.85rem;
+  color: #e8ff8a;
   text-decoration: none;
   font-weight: 800;
   letter-spacing: 0.02em;
   opacity: 1;
-  transition: opacity 150ms ease, color 150ms ease;
+  transition: color 150ms ease;
   padding-right: 4px;
-  text-shadow: 0 0 8px rgba(232,255,138,0.25);
 }
 .forgot-link:hover {
   color: #ffffff;
@@ -331,15 +312,14 @@ html, body, .screen, .scrollable {
   position: relative;
   display: flex;
   align-items: center;
-  background: rgba(10, 22, 14, 0.85);
-  border: 1.5px solid rgba(232, 255, 138, 0.35);
+  background: #0a1f10;
+  border: 2px solid rgba(232, 255, 138, 0.45);
   border-radius: 14px;
-  transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
 }
-.field-input-wrap:hover { border-color: rgba(232, 255, 138, 0.6); }
+.field-input-wrap:hover { border-color: rgba(232, 255, 138, 0.7); }
 .field-input-wrap:focus-within {
   border-color: var(--accent);
-  background: rgba(10, 22, 14, 0.95);
   box-shadow: 0 0 0 4px rgba(232, 255, 138, 0.25);
 }
 .field-icon {
@@ -366,12 +346,12 @@ html, body, .screen, .scrollable {
   letter-spacing: 0.01em;
 }
 .field-input-wrap input::placeholder {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.75);
   font-weight: 400;
 }
 .field-input-wrap input:-webkit-autofill {
   -webkit-text-fill-color: #ffffff;
-  -webkit-box-shadow: 0 0 0 1000px rgba(22,44,28,0.97) inset;
+  -webkit-box-shadow: 0 0 0 1000px #0a1f10 inset;
   caret-color: #ffffff;
 }
 .pwd-toggle {
@@ -385,25 +365,29 @@ html, body, .screen, .scrollable {
 }
 .pwd-toggle:hover { opacity: 1; }
 
+/* ============================================================
+   SUBMIT BUTTON — solid lime, dark text, no chance of dim render
+   ============================================================ */
 .auth-submit {
-  margin-top: 6px;
+  margin-top: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 15px 20px;
+  padding: 16px 20px;
   border-radius: 14px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-soft) 100%);
-  color: #07140a;
-  font-weight: 800;
-  font-size: 1rem;
+  background: linear-gradient(135deg, #e8ff8a 0%, #b8e858 100%);
+  color: #0a1f10;
+  font-weight: 900;
+  font-size: 1.05rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   border: none;
-  box-shadow: 0 12px 30px rgba(200,255,93,0.4);
+  box-shadow: 0 12px 30px rgba(200,255,93,0.45);
   transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
   position: relative;
   overflow: hidden;
+  cursor: pointer;
 }
 .auth-submit::before {
   content: '';
@@ -417,22 +401,28 @@ html, body, .screen, .scrollable {
 .auth-submit:hover::before { transform: translateX(100%); }
 .auth-submit:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 38px rgba(200,255,93,0.55);
+  box-shadow: 0 16px 38px rgba(200,255,93,0.6);
+  filter: brightness(1.05);
 }
 .auth-submit:active { transform: translateY(0) scale(0.98); }
 .auth-submit:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+.auth-submit .btn-label { color: #0a1f10; }
 .auth-submit .btn-arrow {
   font-size: 1.2rem;
+  color: #0a1f10;
   transition: transform 200ms ease;
 }
 .auth-submit:hover .btn-arrow { transform: translateX(4px); }
 
+/* ============================================================
+   MESSAGES
+   ============================================================ */
 .auth-msg {
   margin: 4px 0 0;
   min-height: 1.2em;
   font-size: 0.95rem;
   font-weight: 600;
-  padding: 11px 14px;
+  padding: 12px 14px;
   border-radius: 10px;
   text-align: center;
   display: none;
@@ -440,22 +430,21 @@ html, body, .screen, .scrollable {
 }
 .auth-msg:not(:empty) { display: block; }
 .auth-msg.info {
-  background: rgba(232,255,138,0.18);
-  border: 1px solid rgba(232,255,138,0.45);
+  background: rgba(232,255,138,0.22);
+  border: 1.5px solid rgba(232,255,138,0.55);
   color: #ffffff;
 }
 .auth-msg.success {
-  background: rgba(155,224,96,0.22);
-  border: 1px solid rgba(155,224,96,0.55);
+  background: rgba(155,224,96,0.28);
+  border: 1.5px solid rgba(155,224,96,0.65);
   color: #ffffff;
 }
 .auth-msg.error {
-  background: rgba(255,117,133,0.22);
-  border: 1px solid rgba(255,117,133,0.55);
+  background: rgba(255,117,133,0.28);
+  border: 1.5px solid rgba(255,117,133,0.65);
   color: #ffffff;
 }
 
-/* Inline action buttons (e.g. Resend confirmation) */
 .auth-actions {
   display: flex;
   flex-direction: column;
@@ -464,21 +453,19 @@ html, body, .screen, .scrollable {
 }
 .auth-actions[hidden] { display: none; }
 .auth-action-btn {
-  background: rgba(232,255,138,0.22);
-  border: 1px solid rgba(232,255,138,0.55);
+  background: rgba(232,255,138,0.28);
+  border: 1.5px solid rgba(232,255,138,0.6);
   color: #ffffff;
-  padding: 11px 16px;
+  padding: 12px 16px;
   border-radius: 12px;
   font-weight: 800;
   font-size: 0.92rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+  transition: background 150ms ease, transform 150ms ease;
 }
 .auth-action-btn:hover {
-  background: rgba(232,255,138,0.32);
-  border-color: var(--accent);
-  color: #ffffff;
+  background: rgba(232,255,138,0.4);
   transform: translateY(-1px);
 }
 .auth-action-btn:active { transform: translateY(0) scale(0.98); }
@@ -486,8 +473,8 @@ html, body, .screen, .scrollable {
 .auth-foot {
   margin: 18px 0 0;
   text-align: center;
-  font-size: 0.88rem;
-  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
   letter-spacing: 0.04em;
   font-weight: 500;
 }
@@ -507,7 +494,7 @@ html, body, .screen, .scrollable {
 }
 .eyebrow {
   margin: 0; text-transform: uppercase; letter-spacing: 0.16em;
-  font-size: 0.82rem; color: var(--accent); font-weight: 800;
+  font-size: 0.85rem; color: var(--accent); font-weight: 800;
 }
 h1 {
   font-family: 'Black Ops One', sans-serif;
@@ -519,20 +506,21 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 .primary-btn, .secondary-btn, .ghost-btn {
   border-radius: 14px;
   padding: 12px 18px;
-  font-weight: 700;
+  font-weight: 800;
   border: 1px solid transparent;
   font-size: 1rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
+  cursor: pointer;
 }
 .primary-btn {
-  background: linear-gradient(135deg, var(--accent), #8fda58);
-  color: #07140a;
+  background: linear-gradient(135deg, #e8ff8a, #8fda58);
+  color: #0a1f10;
   box-shadow: 0 8px 24px rgba(200,255,93,0.3);
 }
-.secondary-btn { background: rgba(232,255,138,0.28); color: #ffffff; border-color: var(--border); }
-.ghost-btn { background: rgba(255,255,255,0.12); border-color: var(--border); color: var(--bone); }
+.secondary-btn { background: rgba(232,255,138,0.3); color: #ffffff; border-color: var(--border); }
+.ghost-btn { background: rgba(255,255,255,0.14); border-color: var(--border); color: var(--bone); }
 .ghost-btn.small { padding: 8px 12px; font-size: 0.85rem; }
 .primary-btn:hover, .secondary-btn:hover, .ghost-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
 .primary-btn:active { transform: translateY(0) scale(0.98); }
@@ -543,16 +531,15 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   display: flex; flex-wrap: wrap; gap: 16px;
   justify-content: space-between; align-items: center;
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 22px;
   padding: 16px 18px;
-  backdrop-filter: blur(12px);
   margin-bottom: 14px;
 }
 .hud-stats { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .stat {
-  background: rgba(8,18,12,0.7);
-  border: 1px solid var(--border);
+  background: #0a1f10;
+  border: 1.5px solid var(--border);
   border-radius: 14px;
   padding: 8px 14px;
   text-align: center;
@@ -565,29 +552,28 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
 }
 .lobby-tab {
-  background: rgba(255,255,255,0.12);
-  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.14);
+  border: 1.5px solid var(--border);
   border-radius: 14px;
   padding: 10px 18px;
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #ffffff;
-  opacity: 0.9;
   font-size: 0.95rem;
+  cursor: pointer;
 }
-.lobby-tab:hover { opacity: 1; background: rgba(255,255,255,0.18); }
+.lobby-tab:hover { background: rgba(255,255,255,0.22); }
 .lobby-tab.active {
-  background: linear-gradient(135deg, var(--accent), var(--jungle-light));
-  color: #07140a;
+  background: linear-gradient(135deg, #e8ff8a, #8fda58);
+  color: #0a1f10;
   border-color: transparent;
-  opacity: 1;
 }
 
 .pane { display: none; }
 .pane.active { display: block; }
 .pane-title { font-family: 'Black Ops One', sans-serif; margin: 0 0 6px; font-size: 1.4rem; color: var(--bone); }
-.pane-sub { color: #ffffff; opacity: 0.9; margin: 0 0 16px; line-height: 1.5; font-size: 1rem; }
+.pane-sub { color: #ffffff; opacity: 0.95; margin: 0 0 16px; line-height: 1.5; font-size: 1rem; }
 
 .mission-grid {
   display: grid; gap: 14px;
@@ -595,13 +581,14 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 }
 .mission-card {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 22px;
   padding: 18px;
   display: flex; flex-direction: column;
   gap: 12px;
   position: relative;
   overflow: hidden;
+  cursor: pointer;
 }
 .mission-card::before {
   content: '';
@@ -619,7 +606,7 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 .world-controls {
   display: flex; flex-direction: column; gap: 12px;
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 22px;
   padding: 18px;
   margin-bottom: 14px;
@@ -627,17 +614,17 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 .invite-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .invite-row input {
   flex: 1; min-width: 140px;
-  background: rgba(10, 22, 14, 0.85);
+  background: #0a1f10;
   border: 1.5px solid var(--border);
   border-radius: 12px; padding: 12px 14px;
   color: #ffffff;
   font-size: 1rem;
 }
-.invite-row input::placeholder { color: rgba(255,255,255,0.65); }
-.invite-row input:focus { outline: none; border-color: var(--accent); background: rgba(10, 22, 14, 0.95); }
+.invite-row input::placeholder { color: rgba(255,255,255,0.7); }
+.invite-row input:focus { outline: none; border-color: var(--accent); }
 .invites-block {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 22px;
   padding: 18px;
   margin-bottom: 14px;
@@ -650,15 +637,15 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 .invites-list, .online-list { display: grid; gap: 8px; }
 .invite-item, .online-item {
   display: flex; align-items: center; justify-content: space-between;
-  background: rgba(255,255,255,0.1);
-  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.12);
+  border: 1.5px solid var(--border);
   border-radius: 12px;
   padding: 10px 14px;
   gap: 8px;
   color: #ffffff;
 }
 .invite-item .actions { display: flex; gap: 6px; }
-.empty { color: rgba(255,255,255,0.75); margin: 0; font-style: italic; font-size: 0.95rem; }
+.empty { color: rgba(255,255,255,0.8); margin: 0; font-style: italic; font-size: 0.95rem; }
 
 .armory-grid {
   display: grid; gap: 14px;
@@ -666,7 +653,7 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 }
 .weapon-card {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 20px;
   padding: 16px;
   display: grid; gap: 10px;
@@ -676,13 +663,13 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 .weapon-icon { font-size: 2.4rem; }
 .weapon-card h4 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.15rem; color: var(--bone); }
 .stat-row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.92rem; }
-.stat-row span { background: rgba(8,18,12,0.7); padding: 5px 12px; border-radius: 999px; color: #ffffff; font-weight: 700; border: 1px solid rgba(232,255,138,0.3); }
+.stat-row span { background: #0a1f10; padding: 5px 12px; border-radius: 999px; color: #ffffff; font-weight: 700; border: 1px solid rgba(232,255,138,0.4); }
 .weapon-actions { display: flex; gap: 8px; }
-.weapon-actions button { flex: 1; padding: 10px; border-radius: 12px; font-weight: 800; }
+.weapon-actions button { flex: 1; padding: 10px; border-radius: 12px; font-weight: 800; cursor: pointer; }
 .btn-buy { background: var(--gold); color: #221b00; border: none; }
-.btn-equip { background: var(--accent); color: #07140a; border: none; }
-.btn-equipped { background: rgba(232,255,138,0.3); color: #ffffff; border: 1px solid var(--accent); }
-.btn-locked { background: rgba(255,117,133,0.3); color: #ffffff; border: 1px solid var(--danger); }
+.btn-equip { background: var(--accent); color: #0a1f10; border: none; }
+.btn-equipped { background: rgba(232,255,138,0.35); color: #ffffff; border: 1.5px solid var(--accent); }
+.btn-locked { background: rgba(255,117,133,0.35); color: #ffffff; border: 1.5px solid var(--danger); }
 .weapon-actions button:disabled { opacity: 0.85; cursor: not-allowed; }
 
 /* ============================================================
@@ -716,8 +703,8 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 .hud-center span { font-size: 0.78rem; letter-spacing: 0.16em; color: var(--accent); text-transform: uppercase; font-weight: 800; }
 .hud-center strong { font-family: 'Black Ops One', sans-serif; font-size: 1.1rem; color: var(--bone); }
 .hud-block {
-  background: rgba(8,16,12,0.82);
-  border: 1px solid var(--border);
+  background: rgba(8,16,12,0.88);
+  border: 1.5px solid var(--border);
   border-radius: 14px;
   padding: 8px 14px;
   min-width: 90px;
@@ -736,8 +723,8 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   z-index: 4;
 }
 .kill-feed .feed-item {
-  background: rgba(8,16,12,0.85);
-  border: 1px solid var(--border);
+  background: rgba(8,16,12,0.88);
+  border: 1.5px solid var(--border);
   padding: 6px 12px;
   border-radius: 10px;
   font-size: 0.92rem;
@@ -757,29 +744,28 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
 .game-overlay {
   position: fixed; inset: 0;
   display: grid; place-items: center;
-  background: rgba(0,0,0,0.82);
+  background: rgba(0,0,0,0.85);
   z-index: 10;
   padding: 20px;
   overflow-y: auto;
 }
 .game-overlay.hidden { display: none; }
 .overlay-card {
-  background: rgba(20, 38, 26, 0.95);
-  border: 1.5px solid var(--border);
+  background: #1f3a26;
+  border: 2px solid var(--border);
   border-radius: 22px;
   padding: 28px;
   width: min(420px, 100%);
   text-align: center;
-  backdrop-filter: blur(12px);
 }
 .overlay-card h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.8rem; color: var(--accent); }
 .overlay-card p { color: #ffffff; margin: 8px 0 18px; font-size: 1rem; }
 .result-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
-.result-stats div { background: rgba(8,18,12,0.7); border-radius: 12px; padding: 10px; border: 1px solid rgba(232,255,138,0.25); }
+.result-stats div { background: #0a1f10; border-radius: 12px; padding: 10px; border: 1.5px solid rgba(232,255,138,0.3); }
 .result-stats span { display: block; font-size: 0.78rem; letter-spacing: 0.12em; color: var(--accent); font-weight: 800; text-transform: uppercase; }
 .result-stats strong { font-family: 'Black Ops One', sans-serif; font-size: 1.4rem; color: var(--gold); }
 
-/* ----- MOBILE CONTROLS (dual joystick) ----- */
+/* ----- MOBILE CONTROLS ----- */
 .mobile-controls { display: none; }
 @media (hover: none) and (pointer: coarse) {
   .mobile-controls {
@@ -808,20 +794,16 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   }
   .stick {
     width: 130px; height: 130px;
-    background: rgba(8,16,12,0.65);
-    border: 1px solid var(--border);
+    background: rgba(8,16,12,0.7);
+    border: 1.5px solid var(--border);
     border-radius: 50%;
     position: relative;
     pointer-events: auto;
     touch-action: none;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 0 30px rgba(200,255,93,0.05);
   }
   .stick.look-stick {
-    background: rgba(8,16,12,0.65);
-    border-color: rgba(255,138,77,0.4);
+    border-color: rgba(255,138,77,0.45);
     box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 0 30px rgba(255,138,77,0.06);
   }
   .stick-label {
@@ -837,7 +819,7 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   .stick.look-stick .stick-label { color: var(--accent-2); }
   .stick-knob {
     width: 56px; height: 56px;
-    background: rgba(212,255,122,0.5);
+    background: rgba(212,255,122,0.55);
     border: 2px solid var(--accent);
     border-radius: 50%;
     position: absolute;
@@ -847,7 +829,7 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
     transition: background 120ms ease;
   }
   .stick.look-stick .stick-knob {
-    background: rgba(255,138,77,0.5);
+    background: rgba(255,138,77,0.55);
     border-color: var(--accent-2);
   }
   .touch-buttons {
@@ -857,16 +839,13 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   }
   .tbtn {
     width: 64px; height: 64px;
-    background: rgba(8,16,12,0.8);
-    border: 1px solid var(--border);
+    background: rgba(8,16,12,0.85);
+    border: 1.5px solid var(--border);
     border-radius: 18px;
     color: var(--accent);
     font-size: 1.3rem;
     font-weight: 700;
     touch-action: manipulation;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
   }
   .tbtn.fire {
     background: var(--danger);
@@ -884,15 +863,14 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; col
   position: fixed;
   top: 18px; left: 50%;
   transform: translateX(-50%);
-  background: rgba(20, 38, 26, 0.95);
-  border: 1.5px solid var(--accent);
+  background: #1f3a26;
+  border: 2px solid var(--accent);
   color: #ffffff;
   padding: 12px 22px;
   border-radius: 14px;
   z-index: 99;
   font-size: 1rem;
   font-weight: 600;
-  backdrop-filter: blur(12px);
   box-shadow: var(--shadow);
 }
 .toast.hidden { display: none; }
