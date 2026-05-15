@@ -259,11 +259,14 @@ function spawnEnemy(health, speed, opts = {}) {
 }
 
 function setMissionHUD(mission) {
-  document.getElementById('missionTitle').textContent = mission.name || 'Open World';
-  document.getElementById('missionObjective').textContent = mission.objective || '';
+  const t = document.getElementById('missionTitle');
+  const o = document.getElementById('missionObjective');
+  if (t) t.textContent = mission.name || 'Open World';
+  if (o) o.textContent = mission.objective || '';
 }
 function setObjective(text) {
-  document.getElementById('missionObjective').textContent = text;
+  const o = document.getElementById('missionObjective');
+  if (o) o.textContent = text;
 }
 
 // =============================================================
@@ -280,14 +283,17 @@ function attachInput() {
 
   // Block iOS long-press magnifier / copy menu globally on the game screen
   const blockCtx = (e) => e.preventDefault();
-  document.getElementById('gameScreen').addEventListener('contextmenu', blockCtx);
-  stickListeners.push({ el: document.getElementById('gameScreen'), type: 'contextmenu', fn: blockCtx });
+  const gs = document.getElementById('gameScreen');
+  if (gs) {
+    gs.addEventListener('contextmenu', blockCtx);
+    stickListeners.push({ el: gs, type: 'contextmenu', fn: blockCtx });
+  }
 
   // ---- Dual joysticks via Pointer Events ----
   setupStick(document.getElementById('moveStick'), moveStick);
   setupStick(document.getElementById('lookStick'), lookStick);
 
-  // Fire button (use pointer events so it doesn't fight with joysticks)
+  // Fire button
   const fireBtn = document.getElementById('fireBtn');
   if (fireBtn) {
     const onFireDown = (e) => { e.preventDefault(); mouse.fireDown = true; tryFire(); };
@@ -320,7 +326,7 @@ function setupStick(el, state) {
   if (!el) return;
 
   const onDown = (e) => {
-    if (state.pointerId !== null) return;          // already tracking a finger
+    if (state.pointerId !== null) return;
     e.preventDefault();
     e.stopPropagation();
     const r = el.getBoundingClientRect();
@@ -349,6 +355,7 @@ function setupStick(el, state) {
   };
 
   const onCtx = (e) => e.preventDefault();
+  const blockTouch = (e) => { e.preventDefault(); };
 
   el.addEventListener('pointerdown', onDown);
   el.addEventListener('pointermove', onMove);
@@ -356,8 +363,6 @@ function setupStick(el, state) {
   el.addEventListener('pointercancel', onUp);
   el.addEventListener('pointerleave', onUp);
   el.addEventListener('contextmenu', onCtx);
-  // Belt-and-suspenders: block legacy touch events that iOS might still fire
-  const blockTouch = (e) => { e.preventDefault(); };
   el.addEventListener('touchstart', blockTouch, { passive: false });
   el.addEventListener('touchmove', blockTouch, { passive: false });
 
@@ -389,7 +394,9 @@ function updateStickPos(el, state, x, y) {
 function detachInput() {
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
-  if (canvas) canvas.removeEventListener('click', onCanvasClick);
+  if (canvas) {
+    try { canvas.removeEventListener('click', onCanvasClick); } catch (_) {}
+  }
   document.removeEventListener('pointerlockchange', onPointerLock);
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('mousedown', onMouseDown);
@@ -403,6 +410,15 @@ function detachInput() {
   // Reset stick state
   moveStick.pointerId = null; moveStick.dx = 0; moveStick.dy = 0;
   lookStick.pointerId = null; lookStick.dx = 0; lookStick.dy = 0;
+  mouse.fireDown = false;
+
+  // Reset knobs visually
+  document.querySelectorAll('#moveStick .stick-knob, #lookStick .stick-knob').forEach(k => {
+    k.style.transform = 'translate(-50%, -50%)';
+  });
+
+  // Clear key state so leftover keys don't carry over
+  for (const k of Object.keys(keys)) delete keys[k];
 }
 
 function onKeyDown(e) {
@@ -412,13 +428,13 @@ function onKeyDown(e) {
 }
 function onKeyUp(e) { keys[e.code] = false; }
 function onCanvasClick() {
-  if (!mouse.locked && canvas.requestPointerLock) canvas.requestPointerLock();
+  if (!mouse.locked && canvas && canvas.requestPointerLock) canvas.requestPointerLock();
 }
 function onPointerLock() {
   mouse.locked = document.pointerLockElement === canvas;
 }
 function onMouseMove(e) {
-  if (!mouse.locked) return;
+  if (!mouse.locked || !player) return;
   player.yaw -= e.movementX * 0.0024;
   player.pitch -= e.movementY * 0.0024;
   player.pitch = Math.max(-1.4, Math.min(1.4, player.pitch));
@@ -433,6 +449,11 @@ function onMouseUp(e) {
 function startLoop() {
   cancelAnimationFrame(raf);
   const tick = () => {
+    // If we've been torn down, stop the loop completely
+    if (!renderer || !scene || !camera || !gameState) {
+      raf = null;
+      return;
+    }
     raf = requestAnimationFrame(tick);
     const dt = Math.min(0.05, clock.getDelta());
     try {
@@ -450,7 +471,7 @@ function update(dt) {
   if (!gameState || gameState.over) return;
 
   // Right joystick = look. Horizontal yaws camera, vertical pitches it.
-  const lookYawSpeed = 2.4;   // rad/sec at full deflection
+  const lookYawSpeed = 2.4;
   const lookPitchSpeed = 1.8;
   if (lookStick.dx || lookStick.dy) {
     player.yaw -= lookStick.dx * lookYawSpeed * dt;
@@ -508,15 +529,12 @@ function update(dt) {
     return true;
   });
 
-  // ====== PICKUPS (ammo crates, medkits) ======
   checkPickups();
 
-  // ====== CAPTURE FLAG (open world only) ======
   if (gameState.mode === 'world' && worldProps?.flags?.length) {
     updateCaptureFlag(dt);
   }
 
-  // enemies
   for (const e of enemies) {
     if (e.dead) continue;
     const dxe = player.pos.x - e.mesh.position.x;
@@ -540,7 +558,6 @@ function update(dt) {
     }
   }
 
-  // mission progression
   const aliveEnemies = enemies.filter(e => !e.dead).length;
   if (gameState.mode === 'mission') {
     const m = gameState.mission;
@@ -595,11 +612,7 @@ function checkPickups() {
     }
     const d = Math.hypot(player.pos.x - c.x, player.pos.z - c.z);
     if (d < c.radius + 0.6) {
-      // restock reserve to max
-      const max = gameState.weapon.reserve;
       const before = gameState.reserve;
-      gameState.reserve = Math.max(gameState.reserve, max);
-      // top up by at least one full mag of reserve
       gameState.reserve = before + gameState.weapon.magazine * 3;
       c.used = true;
       c.cooldownUntil = now + 15000;
@@ -638,7 +651,6 @@ function updateCaptureFlag(dt) {
       gameState.captureProgress = 0;
       gameState.coinsEarned += 50;
       flashPickup('🚩 Flag captured! +50 coins');
-      // move flag to a new random spot
       const nx = (Math.random() - 0.5) * 50;
       const nz = (Math.random() - 0.5) * 50;
       f.x = nx; f.z = nz; f.mesh.position.set(nx, 0, nz);
@@ -654,6 +666,7 @@ function updateCaptureFlag(dt) {
 
 function flashPickup(text) {
   const feed = document.getElementById('killFeed');
+  if (!feed) return;
   const item = document.createElement('div');
   item.className = 'feed-item';
   item.textContent = text;
@@ -717,13 +730,11 @@ function shootRay(w) {
 
   let hitEnemy = null, hitDist = Infinity, hitBarrel = null;
 
-  // check enemies
   for (const e of enemies) {
     if (e.dead) continue;
     const d = rayHitsEnemy(origin, tmpDir, e);
     if (d != null && d < hitDist && d < w.range) { hitDist = d; hitEnemy = e; hitBarrel = null; }
   }
-  // check barrels (also raycastable)
   if (worldProps?.barrels) {
     for (const b of worldProps.barrels) {
       if (b.exploded) continue;
@@ -745,7 +756,6 @@ function shootRay(w) {
         const d = e.mesh.position.distanceTo(explosion);
         if (d < w.splash) damageEnemy(e, dmg * (1 - d / w.splash));
       }
-      // splash also damages barrels
       if (worldProps?.barrels) {
         for (const b of worldProps.barrels) {
           if (b.exploded) continue;
@@ -800,17 +810,16 @@ function damageBarrel(b, dmg) {
 
 function explodeBarrel(b) {
   b.exploded = true;
-  // visual: orange flash sphere expanding
   const flashGeo = new THREE.SphereGeometry(1, 16, 16);
   const flashMat = new THREE.MeshBasicMaterial({ color: 0xffb84d, transparent: true, opacity: 1 });
   const flash = new THREE.Mesh(flashGeo, flashMat);
   flash.position.set(b.x, 1, b.z);
   scene.add(flash);
-  // hide the barrel
   if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
 
   let t = 0;
   const expand = () => {
+    if (!scene) return;
     t += 0.05;
     if (t > 1) { scene.remove(flash); return; }
     flash.scale.setScalar(1 + t * b.splashRadius);
@@ -819,13 +828,11 @@ function explodeBarrel(b) {
   };
   expand();
 
-  // damage enemies in radius
   for (const e of enemies) {
     if (e.dead) continue;
     const d = Math.hypot(e.mesh.position.x - b.x, e.mesh.position.z - b.z);
     if (d < b.splashRadius) damageEnemy(e, b.splashDamage * (1 - d / b.splashRadius));
   }
-  // damage other barrels (chain reaction)
   if (worldProps?.barrels) {
     for (const other of worldProps.barrels) {
       if (other === b || other.exploded) continue;
@@ -835,7 +842,6 @@ function explodeBarrel(b) {
       }
     }
   }
-  // damage player if too close
   const dPlayer = Math.hypot(player.pos.x - b.x, player.pos.z - b.z);
   if (dPlayer < b.splashRadius && performance.now() > gameState.spawnInvulnUntil) {
     const dmg = b.splashDamage * 0.6 * (1 - dPlayer / b.splashRadius);
@@ -855,7 +861,6 @@ function onEnemyKilled(e) {
   gameState.coinsEarned += reward + bonus;
   feedKill(e.boss ? '☠️ WARLORD ELIMINATED' : '🎯 Hostile down');
 
-  // chance to drop a medkit at the enemy's position
   if (!e.boss && Math.random() < 0.18 && worldProps) {
     spawnDroppedMedkit(e.mesh.position.x, e.mesh.position.z);
   }
@@ -888,6 +893,7 @@ function spawnDroppedMedkit(x, z) {
 
 function feedKill(text) {
   const feed = document.getElementById('killFeed');
+  if (!feed) return;
   const item = document.createElement('div');
   item.className = 'feed-item';
   item.textContent = text;
@@ -927,14 +933,16 @@ function enemyShoot(e) {
 
 function flashHit() {
   const f = document.getElementById('hitFlash');
+  if (!f) return;
   f.classList.add('show');
   setTimeout(() => f.classList.remove('show'), 120);
 }
 
 function reloadWeapon() {
-  if (gameState.reloading || gameState.ammo === gameState.weapon.magazine || gameState.reserve <= 0) return;
+  if (!gameState || gameState.reloading || gameState.ammo === gameState.weapon.magazine || gameState.reserve <= 0) return;
   gameState.reloading = true;
-  document.getElementById('ammoText').textContent = 'Reloading…';
+  const a = document.getElementById('ammoText');
+  if (a) a.textContent = 'Reloading…';
   setTimeout(() => {
     if (!gameState) return;
     const need = gameState.weapon.magazine - gameState.ammo;
@@ -947,18 +955,23 @@ function reloadWeapon() {
 }
 
 function updateHUD() {
-  document.getElementById('healthBar').style.width = Math.max(0, gameState.health) + '%';
+  if (!gameState) return;
+  const hb = document.getElementById('healthBar');
+  if (hb) hb.style.width = Math.max(0, gameState.health) + '%';
   if (!gameState.reloading) {
-    document.getElementById('ammoText').textContent = `${gameState.ammo} / ${gameState.reserve}`;
+    const a = document.getElementById('ammoText');
+    if (a) a.textContent = `${gameState.ammo} / ${gameState.reserve}`;
   }
-  document.getElementById('killsText').textContent = gameState.kills;
-  document.getElementById('gameCoins').textContent = (Auth.profile?.coins || 0) + gameState.coinsEarned;
+  const k = document.getElementById('killsText');
+  if (k) k.textContent = gameState.kills;
+  const gc = document.getElementById('gameCoins');
+  if (gc) gc.textContent = (Auth.profile?.coins || 0) + gameState.coinsEarned;
 }
 
 async function endGame(victory, aborted = false) {
   if (!gameState || gameState.over) return;
   gameState.over = true;
-  cancelAnimationFrame(raf);
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
 
   const totalCoins = gameState.coinsEarned + (victory && gameState.mission ? (gameState.mission.bonus || 0) : 0);
   const dur = Math.round((performance.now() - gameState.startTime) / 1000);
@@ -996,40 +1009,96 @@ async function endGame(victory, aborted = false) {
   ov.classList.remove('hidden');
 
   if (worldChannel) {
-    supabase.removeChannel(worldChannel);
+    try { supabase.removeChannel(worldChannel); } catch (_) {}
     worldChannel = null;
   }
   if (worldSyncInterval) clearInterval(worldSyncInterval);
   worldSyncInterval = null;
 }
 
+// =========================================================
+// EXIT — full teardown, prevents freeze when re-entering
+// =========================================================
 function returnToBase() {
-  detachInput();
-  cancelAnimationFrame(raf);
+  // 1) Stop render loop FIRST so it can't render into a disposed renderer
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+
+  // 2) Detach every listener (keyboard, mouse, joysticks, fire/reload)
+  try { detachInput(); } catch (e) { console.error('detachInput error', e); }
+
+  // 3) Tear down realtime + intervals
   if (worldChannel) {
-    supabase.removeChannel(worldChannel);
+    try { supabase.removeChannel(worldChannel); } catch (_) {}
     worldChannel = null;
   }
   if (worldSyncInterval) { clearInterval(worldSyncInterval); worldSyncInterval = null; }
-  if (renderer) renderer.dispose();
-  if (scene) {
-    while (scene.children.length) scene.remove(scene.children[0]);
-  }
+
+  // 4) Release pointer lock (some browsers throw if not locked)
+  try { document.exitPointerLock?.(); } catch (_) {}
+
+  // 5) Dispose three.js resources to free GPU memory
+  try {
+    if (scene) {
+      scene.traverse((obj) => {
+        if (obj.geometry) { try { obj.geometry.dispose(); } catch (_) {} }
+        if (obj.material) {
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          mats.forEach(m => {
+            try {
+              if (m.map) m.map.dispose?.();
+              m.dispose?.();
+            } catch (_) {}
+          });
+        }
+      });
+      while (scene.children.length) scene.remove(scene.children[0]);
+    }
+    if (renderer) {
+      try { renderer.dispose(); } catch (_) {}
+      try { renderer.forceContextLoss?.(); } catch (_) {}
+    }
+  } catch (e) { console.error('GL cleanup error', e); }
+
+  // 6) Null EVERYTHING so the next mission boots from a clean slate
+  renderer = null;
+  scene = null;
+  camera = null;
+  clock = null;
+  player = null;
+  weaponMesh = null;
+  muzzleFlash = null;
+  canvas = null;
   enemies = [];
   obstacles = [];
   bullets = [];
   worldProps = null;
   ambient = null;
   gameState = null;
-  remoteMeshes.forEach(m => scene && scene.remove(m));
   remoteMeshes.clear();
-  document.exitPointerLock?.();
-  if (onExit) onExit();
+
+  // 7) Reset joystick + key state in case detachInput missed anything
+  moveStick.pointerId = null; moveStick.dx = 0; moveStick.dy = 0;
+  lookStick.pointerId = null; lookStick.dx = 0; lookStick.dy = 0;
+  mouse.fireDown = false;
+  for (const k of Object.keys(keys)) delete keys[k];
+
+  // 8) Hide the game overlay and show the lobby
+  const ov = document.getElementById('gameOverlay');
+  if (ov) ov.classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('active');
+
+  // 9) Fire callback to switch back to lobby (and clear it so it can't double-fire)
+  const cb = onExit;
+  onExit = null;
+  if (cb) {
+    // Run on next tick so any pending pointerup events flush first
+    setTimeout(() => { try { cb(); } catch (e) { console.error('onExit error', e); } }, 0);
+  }
 }
 
 /* ----- world realtime sync ----- */
 function subscribeWorld() {
-  if (worldChannel) supabase.removeChannel(worldChannel);
+  if (worldChannel) { try { supabase.removeChannel(worldChannel); } catch (_) {} }
   worldChannel = supabase
     .channel('jungle-world')
     .on('postgres_changes', {
@@ -1040,7 +1109,7 @@ function subscribeWorld() {
       if (payload.eventType === 'DELETE') {
         const id = payload.old?.user_id;
         const m = remoteMeshes.get(id);
-        if (m) { scene.remove(m); remoteMeshes.delete(id); }
+        if (m && scene) { scene.remove(m); remoteMeshes.delete(id); }
       } else {
         const p = payload.new;
         if (p.user_id !== Auth.user.id) renderRemote(p);
@@ -1049,7 +1118,7 @@ function subscribeWorld() {
     .subscribe();
 
   worldSyncInterval = setInterval(async () => {
-    if (!gameState || gameState.over) return;
+    if (!gameState || gameState.over || !player) return;
     try {
       await supabase.from(TABLES.worldPlayers)
         .update({
@@ -1072,6 +1141,7 @@ async function fetchRemoteOnce() {
 }
 
 function renderRemote(p) {
+  if (!scene) return;
   let m = remoteMeshes.get(p.user_id);
   if (!m) {
     m = makeRemoteMesh(p.username || 'agent');
