@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=14" />
+<link rel="stylesheet" href="styles.css?v=15" />
 <style>
   html, body { background: #06180c; }
   body::before {
@@ -57,7 +57,7 @@
             </span>
           </label>
 
-          <label id="usernameField" class="field" hidden>
+          <label id="usernameField" class="field" hidden style="display:none">
             <span class="field-label">Username</span>
             <span class="field-input-wrap">
               <span class="field-icon" aria-hidden="true">★</span>
@@ -218,9 +218,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <!-- ===================================================
-       1) LOAD SUPABASE AS A GLOBAL UMD SCRIPT
-       Plain <script> tag — never depends on ES modules.
-       Falls back to unpkg if jsdelivr is blocked.
+       1) SUPABASE UMD — plain script, no modules
        =================================================== -->
   <script>
     (function loadSupabase() {
@@ -228,16 +226,9 @@
       var fallback = 'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js';
       function inject(src, onError) {
         var s = document.createElement('script');
-        s.src = src;
-        s.async = false;
-        s.crossOrigin = 'anonymous';
-        s.onerror = function () {
-          console.warn('[supabase] failed from', src);
-          if (onError) onError();
-        };
-        s.onload = function () {
-          console.log('[supabase] loaded from', src);
-        };
+        s.src = src; s.async = false; s.crossOrigin = 'anonymous';
+        s.onerror = function () { console.warn('[supabase] failed from', src); if (onError) onError(); };
+        s.onload  = function () { console.log('[supabase] loaded from', src); };
         document.head.appendChild(s);
       }
       inject(primary, function () { inject(fallback); });
@@ -245,9 +236,8 @@
   </script>
 
   <!-- ===================================================
-       2) THREE.js importmap (only used by game.js, loaded
-       lazily AFTER sign-in. If three.js fails, auth and
-       the lobby still work — only the FPS view fails.)
+       2) THREE.js importmap — only used by game.js,
+       lazily loaded ONLY when you tap Deploy / Enter World.
        =================================================== -->
   <script type="importmap">
   {
@@ -258,244 +248,203 @@
   </script>
 
   <!-- ===================================================
-       3) AUTH — FULLY INLINE, NON-MODULE SCRIPT
-       Zero ES module dependencies. Runs synchronously.
-       Owns the entire sign-in / sign-up flow end-to-end.
-       Lazy-loads ./js/app.js (module) ONLY after sign-in.
+       3) FULL APP — inline, non-module
+       AUTH + LOBBY + WORLD + LAUNCH. Zero module imports
+       to enter the lobby. game.js is loaded lazily on
+       Deploy / Enter World, with a friendly toast if it
+       fails — but the lobby itself ALWAYS works.
        =================================================== -->
   <script>
   (function () {
     'use strict';
 
+    /* ---------- CONFIG ---------- */
     var SUPABASE_URL = 'https://xhhmxabftbyxrirvvihn.supabase.co';
     var SUPABASE_ANON_KEY = 'sb_publishable_NZHoIxqqpSvVBP8MrLHCYA_gmg1AbN-';
-    var PROFILES_TABLE = 'uNMexs7BYTXQ2_jungle_strike_profiles';
     var EMAIL_REDIRECT = 'https://sling-gogiapp.web.app/email-confirmed.html';
 
+    var TABLES = {
+      profiles:     'uNMexs7BYTXQ2_jungle_strike_profiles',
+      worldPlayers: 'uNMexs7BYTXQ2_jungle_strike_world_players',
+      worldInvites: 'uNMexs7BYTXQ2_jungle_strike_world_invites',
+    };
+
+    /* ---------- STATIC GAME DATA ---------- */
+    var WEAPONS = {
+      pistol:  { id:'pistol',  name:'Sidearm M9',     icon:'🔫', cost:0,    damage:22,  magazine:12, range:80,  auto:false },
+      shotgun: { id:'shotgun', name:'Boar Buster',    icon:'💥', cost:350,  damage:18,  magazine:6,  range:35,  auto:false },
+      rifle:   { id:'rifle',   name:'Canopy AR-15',   icon:'🎯', cost:600,  damage:28,  magazine:30, range:120, auto:true  },
+      sniper:  { id:'sniper',  name:'Vine Hunter',    icon:'🪶', cost:1100, damage:110, magazine:5,  range:240, auto:false },
+      rocket:  { id:'rocket',  name:'Howler RPG',     icon:'🚀', cost:2200, damage:180, magazine:1,  range:160, auto:false },
+    };
+
+    var MISSIONS = [
+      { id:'recon',    name:'Recon Patrol',    icon:'🦜', description:'Light enemy patrol along the river basin. Move fast, eliminate scouts, and exfil before reinforcements arrive.', difficulty:'Easy',   enemies:8,  bonus:80,  gradient:'linear-gradient(135deg, rgba(127,209,74,0.45), rgba(20,54,31,0.85))' },
+      { id:'boss',     name:'Warlord Hunt',    icon:'🐍', description:'A cartel warlord is hiding deep in the canopy. Wipe out his guards then put down the warlord himself.',           difficulty:'Hard',   enemies:10, bonus:240, gradient:'linear-gradient(135deg, rgba(255,122,61,0.45), rgba(43,14,14,0.85))', boss:true },
+      { id:'survival', name:'Endless Outpost', icon:'🛖', description:'Hold the abandoned ranger outpost while waves of insurgents close in. Each wave is bigger and faster than the last.', difficulty:'Medium', enemies:27, bonus:180, gradient:'linear-gradient(135deg, rgba(255,200,87,0.45), rgba(54,32,8,0.85))' },
+    ];
+
+    /* ---------- STATE ---------- */
     var supa = null;
     var currentMode = 'signin';
     var submitting = false;
-    var moduleLoaded = false;
     var sessionUser = null;
     var sessionProfile = null;
+    var presenceInterval = null;
+    var invitesChannel = null;
+    var gameModulePromise = null;
 
     function $(id) { return document.getElementById(id); }
 
+    /* ---------- UI HELPERS ---------- */
     function setMessage(text, kind) {
       var el = $('authMessage');
       if (!el) return;
       el.className = 'auth-msg';
-      if (!text) {
-        el.textContent = '';
-        el.style.display = 'none';
-        return;
-      }
+      if (!text) { el.textContent = ''; el.style.display = 'none'; return; }
       el.textContent = text;
       if (kind) el.classList.add(kind);
       el.style.display = 'block';
       el.style.visibility = 'visible';
       el.style.opacity = '1';
     }
-
     function setActions(actions) {
       var wrap = $('authActions');
       if (!wrap) return;
       wrap.innerHTML = '';
-      if (!actions || !actions.length) {
-        wrap.hidden = true;
-        return;
-      }
+      if (!actions || !actions.length) { wrap.hidden = true; return; }
       wrap.hidden = false;
       actions.forEach(function (a) {
         var b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'auth-action-btn';
-        b.textContent = a.label;
-        b.addEventListener('click', a.onClick);
+        b.type = 'button'; b.className = 'auth-action-btn';
+        b.textContent = a.label; b.addEventListener('click', a.onClick);
         wrap.appendChild(b);
       });
     }
-
     function setSubmitLabel(text) {
-      var btn = $('authSubmit');
-      if (!btn) return;
+      var btn = $('authSubmit'); if (!btn) return;
       var label = btn.querySelector('.btn-label');
-      if (label) label.textContent = text;
-      else btn.textContent = text;
+      if (label) label.textContent = text; else btn.textContent = text;
     }
-
     function setSubmitting(state) {
       submitting = state;
-      var btn = $('authSubmit');
-      if (btn) btn.disabled = state;
+      var btn = $('authSubmit'); if (btn) btn.disabled = state;
     }
-
+    function showToast(msg, ms) {
+      ms = ms || 2500;
+      var t = $('toast'); if (!t) return;
+      t.textContent = msg;
+      t.classList.remove('hidden');
+      clearTimeout(t._h);
+      t._h = setTimeout(function(){ t.classList.add('hidden'); }, ms);
+    }
     function friendlyError(err) {
-      var raw = ((err && err.message) || '').toLowerCase();
+      var raw  = ((err && err.message) || '').toLowerCase();
       var code = ((err && (err.code || err.error_code)) || '').toLowerCase();
       var out;
-      if (code === 'email_not_confirmed' || raw.indexOf('email not confirmed') >= 0 ||
-          raw.indexOf('not confirmed') >= 0 || raw.indexOf('confirm your email') >= 0) {
-        out = new Error('Your email is not confirmed yet. Check your inbox for the confirmation link, or tap Resend below.');
-        out.code = 'email_not_confirmed';
-        return out;
+      if (code === 'email_not_confirmed' || raw.indexOf('not confirmed') >= 0 || raw.indexOf('confirm your email') >= 0) {
+        out = new Error('Your email is not confirmed yet. Check your inbox for the link, or tap Resend below.');
+        out.code = 'email_not_confirmed'; return out;
       }
-      if (raw.indexOf('invalid login') >= 0 || raw.indexOf('invalid_credentials') >= 0 || code === 'invalid_credentials') {
-        out = new Error('That email or password is incorrect.');
-        out.code = 'invalid_credentials';
-        return out;
-      }
-      if (raw.indexOf('already registered') >= 0 || raw.indexOf('already exists') >= 0 || code === 'user_already_exists') {
-        out = new Error('An account with this email already exists. Try signing in instead.');
-        out.code = 'user_already_exists';
-        return out;
-      }
-      if (raw.indexOf('password') >= 0 && raw.indexOf('short') >= 0) {
-        out = new Error('Password must be at least 6 characters.');
-        out.code = 'weak_password';
-        return out;
-      }
-      if (raw.indexOf('rate') >= 0 || raw.indexOf('too many') >= 0) {
-        out = new Error('Too many attempts. Please wait a moment and try again.');
-        out.code = 'rate_limited';
-        return out;
-      }
-      if (raw.indexOf('network') >= 0 || raw.indexOf('fetch') >= 0 || raw.indexOf('failed to fetch') >= 0) {
-        out = new Error('Network problem. Check your connection and try again.');
-        out.code = 'network';
-        return out;
-      }
-      if (raw.indexOf('invalid email') >= 0 || code === 'invalid_email') {
-        out = new Error('That email address looks invalid.');
-        out.code = 'invalid_email';
-        return out;
-      }
-      out = new Error((err && err.message) || 'Something went wrong. Please try again.');
-      out.code = code || 'unknown';
-      return out;
+      if (raw.indexOf('invalid login') >= 0 || raw.indexOf('invalid_credentials') >= 0 || code === 'invalid_credentials')
+        return new Error('That email or password is incorrect.');
+      if (raw.indexOf('already registered') >= 0 || raw.indexOf('already exists') >= 0 || code === 'user_already_exists')
+        return new Error('An account with this email already exists. Try signing in instead.');
+      if (raw.indexOf('rate') >= 0 || raw.indexOf('too many') >= 0)
+        return new Error('Too many attempts. Please wait a moment and try again.');
+      if (raw.indexOf('network') >= 0 || raw.indexOf('failed to fetch') >= 0)
+        return new Error('Network problem. Check your connection and try again.');
+      return new Error((err && err.message) || 'Something went wrong. Please try again.');
     }
 
+    /* ---------- SUPABASE ---------- */
     function getSupabase() {
       if (supa) return supa;
       if (!window.supabase || typeof window.supabase.createClient !== 'function') return null;
       supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       return supa;
     }
-
     function waitForSupabase(timeoutMs) {
       var start = Date.now();
       return new Promise(function (resolve) {
-        function tick() {
+        (function tick() {
           if (getSupabase()) return resolve(true);
           if (Date.now() - start > timeoutMs) return resolve(false);
           setTimeout(tick, 100);
-        }
-        tick();
+        })();
       });
     }
 
+    /* ---------- PROFILE ---------- */
     function fallbackProfile(username, user) {
       return {
         id: null,
         username: username || (user && user.email && user.email.split('@')[0]) || 'Player',
-        coins: 500,
-        kills_total: 0,
-        missions_completed: 0,
-        owned_weapons: ['pistol'],
-        equipped_weapon: 'pistol',
+        coins: 500, kills_total: 0, missions_completed: 0,
+        owned_weapons: ['pistol'], equipped_weapon: 'pistol',
         _fallback: true
       };
     }
-
     async function loadOrCreateProfile(user, username) {
       var s = getSupabase();
       if (!s || !user) return fallbackProfile(username, user);
       try {
-        var sel = await s.from(PROFILES_TABLE).select('*').eq('user_id', user.id).maybeSingle();
+        var sel = await s.from(TABLES.profiles).select('*').eq('user_id', user.id).maybeSingle();
         if (sel.data) return sel.data;
-      } catch (e) {
-        console.warn('[auth] profile select failed:', e && e.message);
-      }
+      } catch (e) { console.warn('[profile] select failed:', e && e.message); }
       var raw = username || (user.user_metadata && user.user_metadata.username) ||
                 (user.email && user.email.split('@')[0]) || 'Player';
       var safeName = String(raw).replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'Player';
       try {
-        var ins = await s.from(PROFILES_TABLE).insert({
-          username: safeName,
-          coins: 500,
-          kills_total: 0,
-          missions_completed: 0,
-          owned_weapons: ['pistol'],
-          equipped_weapon: 'pistol'
+        var ins = await s.from(TABLES.profiles).insert({
+          username: safeName, coins: 500, kills_total: 0, missions_completed: 0,
+          owned_weapons: ['pistol'], equipped_weapon: 'pistol'
         }).select('*').single();
         if (ins.data) return ins.data;
       } catch (e) {
-        console.warn('[auth] profile insert failed:', e && e.message);
+        console.warn('[profile] insert failed:', e && e.message);
         try {
-          var again = await s.from(PROFILES_TABLE).select('*').eq('user_id', user.id).maybeSingle();
+          var again = await s.from(TABLES.profiles).select('*').eq('user_id', user.id).maybeSingle();
           if (again.data) return again.data;
         } catch (_) {}
       }
       return fallbackProfile(safeName, user);
     }
-
-    async function loadAppModule() {
-      if (moduleLoaded && window.__JUNGLE_APP) return window.__JUNGLE_APP;
-      var mod = await import('./js/app.js?v=14');
-      moduleLoaded = true;
-      window.__JUNGLE_APP = mod;
-      return mod;
-    }
-
-    async function enterApp() {
+    async function saveProfile(patch) {
+      if (!sessionProfile || !sessionProfile.id) {
+        Object.assign(sessionProfile, patch);
+        return;
+      }
+      var s = getSupabase();
       try {
-        var mod = await loadAppModule();
-        if (mod && typeof mod.bootWithSession === 'function') {
-          await mod.bootWithSession({
-            user: sessionUser,
-            profile: sessionProfile,
-            supabase: getSupabase()
-          });
-        } else {
-          // Bare-minimum fallback if app.js export is missing
-          $('authScreen').classList.remove('active');
-          $('lobbyScreen').classList.add('active');
-          $('lobbyHello').textContent = 'Welcome, ' + (sessionProfile && sessionProfile.username || 'Player');
-        }
-      } catch (err) {
-        console.error('[auth] enterApp failed:', err);
-        setMessage('Signed in, but the menu failed to load. Hard refresh (Ctrl/Cmd+Shift+R) to retry.', 'error');
+        var r = await s.from(TABLES.profiles).update(patch).eq('id', sessionProfile.id).select('*').single();
+        if (r.data) sessionProfile = r.data;
+        else Object.assign(sessionProfile, patch);
+      } catch (e) {
+        console.warn('[profile] save failed:', e && e.message);
+        Object.assign(sessionProfile, patch);
       }
     }
 
+    /* ---------- AUTH FLOW ---------- */
     async function handleSubmit() {
       if (submitting) return;
-
       var ready = await waitForSupabase(2000);
       if (!ready) {
         setMessage('Connecting to server…', 'info');
         var ok = await waitForSupabase(15000);
-        if (!ok) {
-          setMessage('Could not connect to server. Check your internet and hard refresh the page.', 'error');
-          return;
-        }
+        if (!ok) { setMessage('Could not connect. Check your internet and refresh.', 'error'); return; }
         setMessage('', '');
       }
-
-      var emailEl = $('authEmail');
-      var pwEl = $('authPassword');
-      var userEl = $('authUsername');
-
-      var email = (emailEl && emailEl.value || '').trim();
-      var pw = (pwEl && pwEl.value) || '';
-      var username = (userEl && userEl.value || '').trim();
-
+      var email    = ($('authEmail').value || '').trim();
+      var pw       = $('authPassword').value || '';
+      var username = ($('authUsername').value || '').trim();
       setActions(null);
 
-      if (!email) { setMessage('Please enter your email.', 'error'); if (emailEl) emailEl.focus(); return; }
-      if (!pw)    { setMessage('Please enter your password.', 'error'); if (pwEl) pwEl.focus(); return; }
-      if (pw.length < 6) { setMessage('Your password needs to be at least 6 characters.', 'error'); if (pwEl) pwEl.focus(); return; }
-      if (currentMode === 'signup' && !username) { setMessage('Please choose a username.', 'error'); if (userEl) userEl.focus(); return; }
+      if (!email) { setMessage('Please enter your email.', 'error'); $('authEmail').focus(); return; }
+      if (!pw)    { setMessage('Please enter your password.', 'error'); $('authPassword').focus(); return; }
+      if (pw.length < 6) { setMessage('Password must be at least 6 characters.', 'error'); $('authPassword').focus(); return; }
+      if (currentMode === 'signup' && !username) { setMessage('Please choose a username.', 'error'); $('authUsername').focus(); return; }
 
       setMessage(currentMode === 'signin' ? 'Signing you in…' : 'Creating your account…', 'info');
       setSubmitting(true);
@@ -507,51 +456,27 @@
         if (currentMode === 'signin') {
           var resIn = await s.auth.signInWithPassword({ email: cleanEmail, password: pw });
           if (resIn.error) throw resIn.error;
-
           sessionUser = resIn.data && resIn.data.user;
           if (!sessionUser) throw new Error('Sign in did not return a user. Please try again.');
-
           sessionProfile = await loadOrCreateProfile(sessionUser, null);
           var displayName = (sessionProfile && sessionProfile.username) || cleanEmail.split('@')[0];
-          setMessage('Welcome back, ' + displayName + '! Loading the menu…', 'success');
-          setTimeout(enterApp, 400);
+          setMessage('Welcome back, ' + displayName + '!', 'success');
+          setTimeout(enterLobby, 250);
         } else {
           var resUp = await s.auth.signUp({
-            email: cleanEmail,
-            password: pw,
-            options: {
-              emailRedirectTo: EMAIL_REDIRECT,
-              data: { username: username }
-            }
+            email: cleanEmail, password: pw,
+            options: { emailRedirectTo: EMAIL_REDIRECT, data: { username: username } }
           });
           if (resUp.error) throw resUp.error;
-
           sessionUser = resUp.data && resUp.data.user;
           var hasSession = !!(resUp.data && resUp.data.session);
-
           if (sessionUser && hasSession) {
             sessionProfile = await loadOrCreateProfile(sessionUser, username);
-            setMessage('Welcome, ' + username + '! Your account is ready. Loading the menu…', 'success');
-            setTimeout(enterApp, 500);
+            setMessage('Welcome, ' + username + '!', 'success');
+            setTimeout(enterLobby, 350);
           } else if (sessionUser && !hasSession) {
-            setMessage('Account created! We sent a confirmation link to ' + cleanEmail + '. Click it, then come back and sign in.', 'success');
-            setActions([{
-              label: 'Resend confirmation email',
-              onClick: async function () {
-                setMessage('Sending another confirmation email…', 'info');
-                try {
-                  var r = await s.auth.resend({
-                    type: 'signup',
-                    email: cleanEmail,
-                    options: { emailRedirectTo: EMAIL_REDIRECT }
-                  });
-                  if (r.error) throw r.error;
-                  setMessage('We re-sent the confirmation email to ' + cleanEmail + '. Check your inbox and spam folder.', 'success');
-                } catch (e2) {
-                  setMessage((e2 && e2.message) || 'Could not resend. Please try again later.', 'error');
-                }
-              }
-            }]);
+            setMessage('Account created! We sent a confirmation link to ' + cleanEmail + '. Click it, then sign in.', 'success');
+            setActions([{ label: 'Resend confirmation email', onClick: function(){ resendConfirm(cleanEmail); } }]);
           } else {
             setMessage('Account created. Please sign in.', 'success');
           }
@@ -560,32 +485,336 @@
         var fe = friendlyError(err);
         setMessage(fe.message, 'error');
         console.error('[auth] submit error:', err);
-
         if (fe.code === 'email_not_confirmed') {
-          var s2 = getSupabase();
-          setActions([{
-            label: 'Resend confirmation email',
-            onClick: async function () {
-              setMessage('Sending another confirmation email…', 'info');
-              try {
-                var r = await s2.auth.resend({
-                  type: 'signup',
-                  email: email.toLowerCase(),
-                  options: { emailRedirectTo: EMAIL_REDIRECT }
-                });
-                if (r.error) throw r.error;
-                setMessage('We re-sent the confirmation email to ' + email + '. Tap the link, then sign in again.', 'success');
-              } catch (e3) {
-                setMessage((e3 && e3.message) || 'Could not resend. Please try again later.', 'error');
-              }
-            }
-          }]);
+          setActions([{ label: 'Resend confirmation email', onClick: function(){ resendConfirm(email.toLowerCase()); } }]);
         }
       } finally {
         setSubmitting(false);
       }
     }
 
+    async function resendConfirm(email) {
+      setMessage('Sending another confirmation email…', 'info');
+      try {
+        var r = await getSupabase().auth.resend({ type: 'signup', email: email, options: { emailRedirectTo: EMAIL_REDIRECT } });
+        if (r.error) throw r.error;
+        setMessage('We re-sent the confirmation email to ' + email + '. Check your inbox and spam folder.', 'success');
+      } catch (e) {
+        setMessage((e && e.message) || 'Could not resend. Please try again later.', 'error');
+      }
+    }
+
+    /* ---------- ENTER LOBBY (inline, no module imports) ---------- */
+    function enterLobby() {
+      $('authScreen').classList.remove('active');
+      $('gameScreen').classList.remove('active');
+      $('lobbyScreen').classList.add('active');
+      renderLobby();
+      wireLobbyOnce();
+      startPresence();
+      subscribeInvites();
+      refreshWorld();
+    }
+
+    function renderLobby() {
+      var p = sessionProfile || fallbackProfile(null, sessionUser);
+      $('lobbyHello').textContent = 'Welcome, ' + p.username;
+      $('lobbyCoins').textContent = p.coins;
+      $('lobbyKills').textContent = p.kills_total;
+      $('lobbyMissions').textContent = p.missions_completed;
+      renderMissions();
+      renderArmory();
+    }
+
+    function renderMissions() {
+      var grid = $('missionGrid');
+      grid.innerHTML = '';
+      MISSIONS.forEach(function (m) {
+        var card = document.createElement('article');
+        card.className = 'mission-card';
+        card.style.setProperty('--gradient', m.gradient);
+        card.innerHTML =
+          '<div class="mission-icon">' + m.icon + '</div>' +
+          '<h4>' + m.name + '</h4>' +
+          '<p>' + m.description + '</p>' +
+          '<div class="mission-meta">' +
+            '<span>Difficulty: <b>' + m.difficulty + '</b></span>' +
+            '<span>Targets: <b>' + m.enemies + (m.boss ? ' + boss' : '') + '</b></span>' +
+            '<span>Bonus: <b>' + m.bonus + ' 🪙</b></span>' +
+          '</div>' +
+          '<button class="primary-btn">Deploy</button>';
+        card.querySelector('button').addEventListener('click', function () { launchMission(m); });
+        grid.appendChild(card);
+      });
+    }
+
+    function renderArmory() {
+      var grid = $('armoryGrid');
+      grid.innerHTML = '';
+      var owned = (sessionProfile && sessionProfile.owned_weapons) || ['pistol'];
+      var equipped = (sessionProfile && sessionProfile.equipped_weapon) || 'pistol';
+      Object.keys(WEAPONS).forEach(function (key) {
+        var w = WEAPONS[key];
+        var isOwned = owned.indexOf(w.id) >= 0;
+        var isEquipped = equipped === w.id;
+        var card = document.createElement('article');
+        card.className = 'weapon-card' + (isEquipped ? ' equipped' : '');
+        card.innerHTML =
+          '<div class="weapon-icon">' + w.icon + '</div>' +
+          '<h4>' + w.name + '</h4>' +
+          '<div class="stat-row">' +
+            '<span>Damage ' + w.damage + '</span>' +
+            '<span>Magazine ' + w.magazine + '</span>' +
+            '<span>Range ' + w.range + 'm</span>' +
+            (w.auto ? '<span>Auto</span>' : '') +
+          '</div>' +
+          '<div class="weapon-actions"></div>';
+        var actions = card.querySelector('.weapon-actions');
+        if (!isOwned) {
+          var buy = document.createElement('button');
+          buy.className = 'btn-buy';
+          buy.textContent = 'Buy — ' + w.cost + ' 🪙';
+          buy.addEventListener('click', function () { purchaseWeapon(w); });
+          actions.appendChild(buy);
+        } else if (isEquipped) {
+          var eq = document.createElement('button');
+          eq.className = 'btn-equipped';
+          eq.textContent = 'Equipped'; eq.disabled = true;
+          actions.appendChild(eq);
+        } else {
+          var ek = document.createElement('button');
+          ek.className = 'btn-equip';
+          ek.textContent = 'Equip';
+          ek.addEventListener('click', function () { equipWeapon(w); });
+          actions.appendChild(ek);
+        }
+        grid.appendChild(card);
+      });
+    }
+
+    async function purchaseWeapon(w) {
+      var p = sessionProfile;
+      if (!p) return;
+      if (p.coins < w.cost) {
+        showToast('You need ' + (w.cost - p.coins) + ' more coins to buy this.');
+        return;
+      }
+      var owned = (p.owned_weapons || []).slice();
+      if (owned.indexOf(w.id) < 0) owned.push(w.id);
+      await saveProfile({ coins: p.coins - w.cost, owned_weapons: owned, equipped_weapon: w.id });
+      renderLobby();
+      showToast(w.name + ' purchased and equipped!');
+    }
+    async function equipWeapon(w) {
+      await saveProfile({ equipped_weapon: w.id });
+      renderLobby();
+      showToast(w.name + ' equipped.');
+    }
+
+    var lobbyWiredOnce = false;
+    function wireLobbyOnce() {
+      if (lobbyWiredOnce) return;
+      lobbyWiredOnce = true;
+
+      document.querySelectorAll('.lobby-tab').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          document.querySelectorAll('.lobby-tab').forEach(function (t) { t.classList.remove('active'); });
+          document.querySelectorAll('.pane').forEach(function (p) { p.classList.remove('active'); });
+          tab.classList.add('active');
+          var pane = $(tab.dataset.pane + 'Pane');
+          if (pane) pane.classList.add('active');
+          if (tab.dataset.pane === 'world') refreshWorld();
+        });
+      });
+
+      $('logoutBtn').addEventListener('click', async function () {
+        stopPresence();
+        try { await getSupabase().auth.signOut(); } catch (_) {}
+        location.reload();
+      });
+
+      $('enterWorldBtn').addEventListener('click', enterWorld);
+      $('sendInviteBtn').addEventListener('click', sendInvite);
+    }
+
+    /* ---------- WORLD (multiplayer presence + invites) ---------- */
+    async function refreshWorld() {
+      await fetchInvites();
+      await fetchOnline();
+    }
+    async function fetchOnline() {
+      var s = getSupabase(); if (!s) return;
+      try {
+        var cutoff = new Date(Date.now() - 60000).toISOString();
+        var r = await s.from(TABLES.worldPlayers).select('*').gte('last_seen', cutoff).order('last_seen', { ascending: false }).limit(20);
+        var data = r.data || [];
+        var list = $('onlineList'); list.innerHTML = '';
+        var others = data.filter(function (p) { return p.user_id !== (sessionUser && sessionUser.id); });
+        if (!others.length) { list.innerHTML = '<p class="empty">Nobody else online right now.</p>'; return; }
+        others.forEach(function (p) {
+          var item = document.createElement('div');
+          item.className = 'online-item';
+          item.innerHTML = '<span>🎯 <strong>' + escapeHtml(p.username) + '</strong> · ' + (p.world_kills || 0) + ' kills</span>' +
+                           '<button class="secondary-btn">Invite</button>';
+          item.querySelector('button').addEventListener('click', function () {
+            $('inviteUser').value = p.username; sendInvite();
+          });
+          list.appendChild(item);
+        });
+      } catch (e) { console.warn('[world] fetchOnline failed:', e && e.message); }
+    }
+    async function fetchInvites() {
+      var s = getSupabase(); if (!s || !sessionProfile) return;
+      try {
+        var r = await s.from(TABLES.worldInvites).select('*')
+          .eq('to_username', sessionProfile.username).eq('status', 'pending')
+          .order('created_at', { ascending: false }).limit(10);
+        var data = r.data || [];
+        var list = $('invitesList'); list.innerHTML = '';
+        if (!data.length) { list.innerHTML = '<p class="empty">No pending invites.</p>'; return; }
+        data.forEach(function (inv) {
+          var item = document.createElement('div');
+          item.className = 'invite-item';
+          item.innerHTML = '<span>📨 <strong>' + escapeHtml(inv.from_username) + '</strong> wants to squad up</span>' +
+            '<div class="actions">' +
+              '<button class="primary-btn" data-act="accept">Accept</button>' +
+              '<button class="ghost-btn" data-act="decline">Decline</button>' +
+            '</div>';
+          item.querySelector('[data-act=accept]').addEventListener('click', async function () {
+            await s.from(TABLES.worldInvites).update({ status: 'accepted' }).eq('id', inv.id);
+            enterWorld();
+          });
+          item.querySelector('[data-act=decline]').addEventListener('click', async function () {
+            await s.from(TABLES.worldInvites).update({ status: 'declined' }).eq('id', inv.id);
+            fetchInvites();
+          });
+          list.appendChild(item);
+        });
+      } catch (e) { console.warn('[world] fetchInvites failed:', e && e.message); }
+    }
+    async function sendInvite() {
+      var s = getSupabase(); if (!s) return;
+      var input = $('inviteUser');
+      var target = (input.value || '').trim();
+      if (!target) return showToast('Please enter a username.');
+      if (target === sessionProfile.username) return showToast("You can't invite yourself.");
+      try {
+        var t = await s.from(TABLES.profiles).select('username').eq('username', target).maybeSingle();
+        if (!t.data) return showToast("We couldn’t find that username.");
+        await s.from(TABLES.worldInvites).insert({
+          from_username: sessionProfile.username, to_username: target,
+          room_code: 'global', status: 'pending'
+        });
+        input.value = '';
+        showToast('Invite sent to ' + target + '.');
+      } catch (e) { showToast('Could not send invite right now.'); }
+    }
+    function subscribeInvites() {
+      var s = getSupabase(); if (!s || !sessionProfile) return;
+      try {
+        if (invitesChannel) s.removeChannel(invitesChannel);
+        invitesChannel = s.channel('invites-' + sessionProfile.username)
+          .on('postgres_changes', {
+            event: 'INSERT', schema: 'public',
+            table: TABLES.worldInvites,
+            filter: 'to_username=eq.' + sessionProfile.username
+          }, function (payload) {
+            showToast('📨 ' + payload.new.from_username + ' invited you!');
+            fetchInvites();
+          })
+          .subscribe();
+      } catch (e) { /* realtime not critical */ }
+    }
+    function startPresence() {
+      if (presenceInterval) return;
+      upsertPresence();
+      presenceInterval = setInterval(upsertPresence, 25000);
+    }
+    function stopPresence() {
+      if (presenceInterval) clearInterval(presenceInterval);
+      presenceInterval = null;
+    }
+    async function upsertPresence() {
+      var s = getSupabase(); if (!s || !sessionProfile || !sessionUser) return;
+      try {
+        var existing = await s.from(TABLES.worldPlayers).select('id').eq('user_id', sessionUser.id).maybeSingle();
+        if (existing.data) {
+          await s.from(TABLES.worldPlayers).update({
+            last_seen: new Date().toISOString(),
+            username: sessionProfile.username,
+            weapon: sessionProfile.equipped_weapon
+          }).eq('id', existing.data.id);
+        } else {
+          await s.from(TABLES.worldPlayers).insert({
+            username: sessionProfile.username,
+            x: 0, y: 1.6, z: 0, ry: 0,
+            weapon: sessionProfile.equipped_weapon,
+            health: 100, world_kills: 0,
+            last_seen: new Date().toISOString()
+          });
+        }
+        fetchOnline();
+      } catch (e) { /* presence is best-effort */ }
+    }
+
+    /* ---------- LAUNCH GAME (lazy load three.js + game.js) ---------- */
+    function loadGameModule() {
+      if (!gameModulePromise) {
+        gameModulePromise = import('./js/game.js?v=15').catch(function (err) {
+          console.error('[game] failed to load:', err);
+          gameModulePromise = null;
+          throw err;
+        });
+      }
+      return gameModulePromise;
+    }
+
+    // Expose Auth-like API for game.js (which expects Auth.user / Auth.profile)
+    window.__JUNGLE_AUTH_BRIDGE = {
+      get user()    { return sessionUser; },
+      get profile() { return sessionProfile; },
+      get lastEmail() { return sessionUser && sessionUser.email; },
+      saveProfile: saveProfile,
+      signOut: function(){ return getSupabase().auth.signOut(); },
+    };
+
+    async function launchMission(mission) {
+      showToast('Loading mission…');
+      try {
+        var mod = await loadGameModule();
+        $('lobbyScreen').classList.remove('active');
+        if (mod && typeof mod.startMission === 'function') {
+          mod.startMission(mission, function () { enterLobby(); });
+        } else {
+          showToast('Game engine missing startMission()');
+        }
+      } catch (err) {
+        showToast('Could not load game engine. Hard refresh and try again.');
+      }
+    }
+    async function enterWorld() {
+      showToast('Loading world…');
+      try {
+        var mod = await loadGameModule();
+        $('lobbyScreen').classList.remove('active');
+        if (mod && typeof mod.startWorld === 'function') {
+          mod.startWorld(function () { enterLobby(); });
+        } else {
+          showToast('Game engine missing startWorld()');
+        }
+      } catch (err) {
+        showToast('Could not load game engine. Hard refresh and try again.');
+      }
+    }
+
+    /* ---------- UTIL ---------- */
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+      });
+    }
+
+    /* ---------- WIRING ---------- */
     function wireTabs() {
       var tabs = document.querySelectorAll('#authScreen .tab');
       var usernameField = $('usernameField');
@@ -594,49 +823,43 @@
           tabs.forEach(function (x) { x.classList.remove('active'); });
           t.classList.add('active');
           currentMode = t.getAttribute('data-tab') || 'signin';
-          if (usernameField) usernameField.hidden = (currentMode !== 'signup');
+          if (usernameField) {
+            var showIt = (currentMode === 'signup');
+            usernameField.hidden = !showIt;
+            usernameField.style.display = showIt ? '' : 'none';
+          }
           setSubmitLabel(currentMode === 'signin' ? 'Sign In' : 'Create Account');
           setMessage('', '');
           setActions(null);
         });
       });
-      if (usernameField) usernameField.hidden = true;
-    }
-
-    function wireSubmit() {
-      var form = $('authForm');
-      var btn = $('authSubmit');
-
-      function onSubmit(e) {
-        if (e) { e.preventDefault(); e.stopPropagation(); }
-        handleSubmit();
+      if (usernameField) {
+        usernameField.hidden = true;
+        usernameField.style.display = 'none';
       }
-
+    }
+    function wireSubmit() {
+      var form = $('authForm'); var btn = $('authSubmit');
+      function onSubmit(e) { if (e) { e.preventDefault(); e.stopPropagation(); } handleSubmit(); }
       if (form) form.addEventListener('submit', onSubmit);
       if (btn) btn.addEventListener('click', onSubmit);
-
       ['authEmail', 'authPassword', 'authUsername'].forEach(function (id) {
-        var inp = $(id);
-        if (!inp) return;
+        var inp = $(id); if (!inp) return;
         inp.addEventListener('keydown', function (ev) {
           if (ev.key === 'Enter') { ev.preventDefault(); handleSubmit(); }
         });
       });
     }
-
     function wirePasswordToggle() {
-      var t = $('togglePwd');
-      var i = $('authPassword');
+      var t = $('togglePwd'); var i = $('authPassword');
       if (!t || !i) return;
       t.addEventListener('click', function () {
         if (i.type === 'password') { i.type = 'text'; t.textContent = '🙈'; }
         else { i.type = 'password'; t.textContent = '👁'; }
       });
     }
-
     function wireForgot() {
-      var link = $('forgotLink');
-      if (!link) return;
+      var link = $('forgotLink'); if (!link) return;
       link.addEventListener('click', async function (e) {
         e.preventDefault();
         var ready = await waitForSupabase(8000);
@@ -647,7 +870,7 @@
         try {
           var r = await getSupabase().auth.resetPasswordForEmail(email, { redirectTo: EMAIL_REDIRECT });
           if (r.error) throw r.error;
-          setMessage('We sent a password reset link to ' + email + '. Check your inbox (and spam folder).', 'success');
+          setMessage('We sent a password reset link to ' + email + '. Check your inbox.', 'success');
         } catch (err) {
           setMessage((err && err.message) || 'Could not send reset email. Try again later.', 'error');
         }
@@ -656,7 +879,7 @@
 
     async function tryRestoreSession() {
       var ready = await waitForSupabase(10000);
-      if (!ready) return false;
+      if (!ready) return;
       try {
         var s = getSupabase();
         var res = await s.auth.getSession();
@@ -664,13 +887,9 @@
         if (session && session.user) {
           sessionUser = session.user;
           sessionProfile = await loadOrCreateProfile(sessionUser, null);
-          await enterApp();
-          return true;
+          enterLobby();
         }
-      } catch (e) {
-        console.warn('[auth] session restore error:', e && e.message);
-      }
-      return false;
+      } catch (e) { console.warn('[auth] session restore error:', e && e.message); }
     }
 
     function boot() {
@@ -681,16 +900,14 @@
       tryRestoreSession();
     }
 
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', boot);
-    } else {
-      boot();
-    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
 
-    // Expose for debugging in DevTools
-    window.__JUNGLE_AUTH = {
-      submit: handleSubmit,
-      getSession: function () { return { user: sessionUser, profile: sessionProfile }; }
+    // Debug handle
+    window.__JUNGLE_APP = {
+      enterLobby: enterLobby,
+      getSession: function () { return { user: sessionUser, profile: sessionProfile }; },
+      supabase: function () { return getSupabase(); }
     };
   })();
   </script>
