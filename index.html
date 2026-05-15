@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-<title>Jungle Strike — FPS</title>
+<title>Jungle Strike</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,59 +12,63 @@
 <body>
   <!-- AUTH SCREEN -->
   <section id="authScreen" class="screen active">
-    <!-- decorative backdrop -->
     <div class="auth-bg" aria-hidden="true">
       <div class="auth-bg-blob blob-1"></div>
       <div class="auth-bg-blob blob-2"></div>
       <div class="auth-bg-blob blob-3"></div>
       <div class="auth-bg-grid"></div>
+      <div class="auth-bg-vignette"></div>
     </div>
 
     <div class="auth-shell">
-      <div class="auth-hero">
-        <div class="auth-logo">🌴</div>
-        <p class="auth-eyebrow">Tactical Jungle Ops</p>
-        <h1 class="auth-title">JUNGLE STRIKE</h1>
-        <p class="auth-tagline">Deploy into the canopy. Take down warlords. Build your arsenal.</p>
-        <ul class="auth-features">
-          <li><span class="dot"></span>Story missions with distinct worlds</li>
-          <li><span class="dot"></span>Live multiplayer combat zone</li>
-          <li><span class="dot"></span>Earn coins · unlock weapons</li>
-        </ul>
-      </div>
-
       <div class="auth-card">
-        <div class="auth-card-head">
-          <h2>Welcome, operative</h2>
-          <p>Sign in to your callsign or create a new one.</p>
+        <div class="auth-brand">
+          <div class="auth-logo">🌴</div>
+          <p class="auth-eyebrow">Tactical Jungle Ops</p>
+          <h1 class="auth-title">Jungle Strike</h1>
+          <p class="auth-tagline">Deploy. Take down warlords. Build your arsenal.</p>
         </div>
 
         <div class="tabs">
           <button class="tab active" data-tab="signin">Sign In</button>
           <button class="tab" data-tab="signup">Create Account</button>
+          <div class="tab-indicator"></div>
         </div>
 
         <form id="authForm" class="auth-form" autocomplete="off" novalidate>
           <label class="field">
             <span class="field-label">Email</span>
-            <input type="email" id="authEmail" placeholder="you@example.com" required autocomplete="email" />
+            <span class="field-input-wrap">
+              <span class="field-icon" aria-hidden="true">✉</span>
+              <input type="email" id="authEmail" placeholder="you@example.com" required autocomplete="email" />
+            </span>
           </label>
 
           <label id="usernameField" class="field" hidden>
             <span class="field-label">Callsign</span>
-            <input type="text" id="authUsername" placeholder="Your in-game name" maxlength="16" autocomplete="username" />
+            <span class="field-input-wrap">
+              <span class="field-icon" aria-hidden="true">★</span>
+              <input type="text" id="authUsername" placeholder="Your in-game name" maxlength="16" autocomplete="username" />
+            </span>
           </label>
 
           <label class="field">
             <span class="field-label">Password</span>
-            <input type="password" id="authPassword" placeholder="At least 6 characters" required minlength="6" autocomplete="current-password" />
+            <span class="field-input-wrap">
+              <span class="field-icon" aria-hidden="true">⌬</span>
+              <input type="password" id="authPassword" placeholder="At least 6 characters" required minlength="6" autocomplete="current-password" />
+              <button type="button" id="togglePwd" class="pwd-toggle" aria-label="Show password">👁</button>
+            </span>
           </label>
 
-          <button type="submit" id="authSubmit" class="primary-btn auth-submit">Sign In</button>
+          <button type="submit" id="authSubmit" class="primary-btn auth-submit">
+            <span class="btn-label">Sign In</span>
+            <span class="btn-arrow">→</span>
+          </button>
           <p id="authMessage" class="auth-msg" role="status" aria-live="polite"></p>
         </form>
 
-        <p class="auth-foot">By continuing you agree to play fair. No cheats, recruit.</p>
+        <p class="auth-foot">Play fair, recruit. No cheats allowed.</p>
       </div>
     </div>
   </section>
@@ -160,7 +164,6 @@
       </div>
     </div>
 
-    <!-- mobile controls: dual joystick + fire/reload -->
     <div id="mobileControls" class="mobile-controls">
       <div id="moveStick" class="stick move-stick">
         <div class="stick-label">MOVE</div>
@@ -179,7 +182,6 @@
     </div>
 
     <div id="killFeed" class="kill-feed"></div>
-
     <div id="hitFlash" class="hit-flash"></div>
 
     <div id="gameOverlay" class="game-overlay hidden">
@@ -196,7 +198,6 @@
     </div>
   </section>
 
-  <!-- INVITE TOAST -->
   <div id="toast" class="toast hidden"></div>
 
   <script type="importmap">
@@ -207,5 +208,15 @@
   }
   </script>
   <script type="module" src="js/app.js"></script>
+  <script>
+    // Password toggle
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'togglePwd') {
+        const input = document.getElementById('authPassword');
+        if (input.type === 'password') { input.type = 'text'; e.target.textContent = '🙈'; }
+        else { input.type = 'password'; e.target.textContent = '👁'; }
+      }
+    });
+  </script>
 </body>
 </html>
