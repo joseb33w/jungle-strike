@@ -351,16 +351,32 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; }
 .result-stats span { display: block; font-size: 0.7rem; letter-spacing: 0.14em; color: var(--accent); }
 .result-stats strong { font-family: 'Black Ops One', sans-serif; font-size: 1.4rem; color: var(--gold); }
 
-/* ----- MOBILE CONTROLS ----- */
+/* ----- MOBILE CONTROLS (dual joystick) ----- */
 .mobile-controls { display: none; }
 @media (hover: none) and (pointer: coarse) {
   .mobile-controls {
     display: flex;
     position: fixed; left: 0; right: 0; bottom: 0;
-    padding: 16px 18px 24px;
+    padding: 16px 18px calc(24px + env(safe-area-inset-bottom));
     justify-content: space-between;
     align-items: flex-end;
     z-index: 5;
+    pointer-events: none;
+    /* Block iOS long-press selection, magnifier, copy/paste */
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+  }
+  .mobile-controls * {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+  .touch-side {
+    display: flex; flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
     pointer-events: none;
   }
   .stick {
@@ -370,7 +386,28 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; }
     border-radius: 50%;
     position: relative;
     pointer-events: auto;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 0 30px rgba(200,255,93,0.05);
   }
+  .stick.look-stick {
+    background: rgba(8,16,12,0.55);
+    border-color: rgba(255,122,61,0.3);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 0 30px rgba(255,122,61,0.05);
+  }
+  .stick-label {
+    position: absolute;
+    top: 8px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    font-weight: 700;
+    pointer-events: none;
+  }
+  .stick.look-stick .stick-label { color: var(--accent-2); }
   .stick-knob {
     width: 56px; height: 56px;
     background: rgba(200,255,93,0.4);
@@ -380,11 +417,16 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; }
     left: 50%; top: 50%;
     transform: translate(-50%, -50%);
     pointer-events: none;
+    transition: background 120ms ease;
+  }
+  .stick.look-stick .stick-knob {
+    background: rgba(255,122,61,0.4);
+    border-color: var(--accent-2);
   }
   .touch-buttons {
-    display: grid; gap: 8px;
-    grid-template-columns: repeat(2, 1fr);
+    display: flex; gap: 10px;
     pointer-events: auto;
+    align-items: center;
   }
   .tbtn {
     width: 64px; height: 64px;
@@ -394,9 +436,21 @@ h2 { font-family: 'Black Ops One', sans-serif; margin: 0; font-size: 1.4rem; }
     color: var(--accent);
     font-size: 1.2rem;
     font-weight: 700;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
-  .tbtn.fire { background: var(--danger); color: white; border-color: transparent; width: 80px; height: 80px; font-size: 1.6rem; grid-column: span 2; }
-  .tbtn.small { width: 50px; height: 50px; font-size: 0.9rem; }
+  .tbtn.fire {
+    background: var(--danger);
+    color: white;
+    border-color: transparent;
+    width: 84px; height: 84px;
+    font-size: 1.6rem;
+    box-shadow: 0 8px 24px rgba(255,77,94,0.4);
+  }
+  .tbtn.fire:active { transform: scale(0.92); }
+  .tbtn.small { width: 50px; height: 50px; font-size: 1.1rem; }
 }
 
 .toast {
