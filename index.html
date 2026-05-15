@@ -8,6 +8,20 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
+<style>
+  /* Defensive: hide any stray text nodes that leak in before the app
+     mounts (e.g. preview-tool metadata headers). Only our real
+     sections inside body should ever render. */
+  html, body { background: #06180c; }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: #06180c;
+    z-index: -10;
+    pointer-events: none;
+  }
+</style>
 </head>
 <body>
   <!-- AUTH SCREEN -->
@@ -213,6 +227,27 @@
   </script>
   <script type="module" src="js/app.js"></script>
   <script>
+    // Strip any text nodes the preview wrapper injects before <body>
+    // (defensive against tool metadata leaks like file headers).
+    (function cleanStrayNodes(){
+      try {
+        // Remove any direct text-node children of <html> or <body> that
+        // aren't part of our game (file headers, byte counts, hashes).
+        const cleanRoot = (root) => {
+          if (!root) return;
+          const toRemove = [];
+          for (const node of root.childNodes) {
+            if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+              toRemove.push(node);
+            }
+          }
+          toRemove.forEach(n => n.remove());
+        };
+        cleanRoot(document.documentElement);
+        cleanRoot(document.body);
+      } catch (e) { /* no-op */ }
+    })();
+
     // Password toggle
     document.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'togglePwd') {
