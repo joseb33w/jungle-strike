@@ -24,7 +24,7 @@ import { startMission, startWorld } from './game.js';
     }
   } catch (err) {
     console.error('Bootstrap error:', err.message, err.stack);
-    showFatalError(err.message);
+    showFatalError('Something went wrong loading the game. Please refresh the page.');
   }
 })();
 
@@ -42,7 +42,6 @@ function setMessage(text, kind) {
 }
 
 function setActions(actions) {
-  // actions: [{label, onClick}]
   const wrap = document.getElementById('authActions');
   if (!wrap) return;
   wrap.innerHTML = '';
@@ -99,16 +98,16 @@ function setupAuthUI() {
       e.preventDefault();
       const email = document.getElementById('authEmail').value.trim();
       if (!email) {
-        setMessage('Enter your email above first, then tap Forgot password.', 'error');
+        setMessage('Type your email in the box above first, then tap Forgot password.', 'error');
         return;
       }
-      setMessage('Sending password reset link…', 'info');
+      setMessage('Sending you a password reset link…', 'info');
       try {
         await Auth.sendPasswordReset(email);
-        setMessage(`Password reset email sent to ${email}. Check your inbox.`, 'success');
+        setMessage(`We sent a password reset link to ${email}. Check your inbox (and spam folder).`, 'success');
         setActions(null);
       } catch (err) {
-        setMessage(err?.message || 'Could not send reset email.', 'error');
+        setMessage(err?.message || 'We couldn\u2019t send the reset email. Please try again.', 'error');
       }
     });
   }
@@ -124,8 +123,8 @@ function setupAuthUI() {
 
     if (!email) { setMessage('Please enter your email.', 'error'); return; }
     if (!pw) { setMessage('Please enter your password.', 'error'); return; }
-    if (pw.length < 6) { setMessage('Password must be at least 6 characters.', 'error'); return; }
-    if (mode === 'signup' && !username) { setMessage('Please choose a callsign.', 'error'); return; }
+    if (pw.length < 6) { setMessage('Your password needs to be at least 6 characters.', 'error'); return; }
+    if (mode === 'signup' && !username) { setMessage('Please choose a username.', 'error'); return; }
 
     setMessage(mode === 'signin' ? 'Signing you in…' : 'Creating your account…', 'info');
     submit.disabled = true;
@@ -134,26 +133,33 @@ function setupAuthUI() {
       if (mode === 'signin') {
         await Auth.signIn(email, pw);
         if (Auth.user) {
-          setMessage('');
-          enterApp();
+          const name = Auth.profile?.username || email.split('@')[0];
+          setMessage(`Welcome back, ${name}! Loading your dashboard…`, 'success');
+          setTimeout(() => {
+            setMessage('');
+            enterApp();
+          }, 700);
         } else {
-          setMessage('Could not sign you in. Please try again.', 'error');
+          setMessage('We couldn\u2019t sign you in. Please double-check your email and password.', 'error');
         }
       } else {
         const res = await Auth.signUp(email, pw, username);
         if (Auth.user && res?.session) {
-          setMessage('');
-          enterApp();
+          setMessage(`Welcome, ${username}! Your account is ready. Loading your dashboard…`, 'success');
+          setTimeout(() => {
+            setMessage('');
+            enterApp();
+          }, 800);
         } else if (Auth.user && !res?.session) {
           setMessage(`Account created! We sent a confirmation link to ${email}. Click it, then come back and sign in.`, 'success');
           setActions([
             { label: 'Resend confirmation email', onClick: async () => {
-                setMessage('Resending confirmation email…', 'info');
+                setMessage('Sending another confirmation email…', 'info');
                 try {
                   await Auth.resendConfirmation(email);
-                  setMessage(`Confirmation email re-sent to ${email}. Check your inbox & spam folder.`, 'success');
+                  setMessage(`We re-sent the confirmation email to ${email}. Check your inbox and spam folder.`, 'success');
                 } catch (err) {
-                  setMessage(err?.message || 'Could not resend.', 'error');
+                  setMessage(err?.message || 'We couldn\u2019t resend the email. Please try again in a moment.', 'error');
                 }
               }
             }
@@ -168,16 +174,16 @@ function setupAuthUI() {
       console.error('Auth submit error:', err);
 
       // If the failure is "email not confirmed", offer a Resend button right
-      // in the error banner area so the user can fix it in one tap.
+      // under the error so the user can fix it in one tap.
       if (err?.code === 'email_not_confirmed') {
         setActions([
           { label: 'Resend confirmation email', onClick: async () => {
-              setMessage('Resending confirmation email…', 'info');
+              setMessage('Sending another confirmation email…', 'info');
               try {
                 await Auth.resendConfirmation(email);
-                setMessage(`Confirmation email re-sent to ${email}. Tap the link inside, then try signing in again.`, 'success');
+                setMessage(`We re-sent the confirmation email to ${email}. Tap the link inside, then try signing in again.`, 'success');
               } catch (e2) {
-                setMessage(e2?.message || 'Could not resend.', 'error');
+                setMessage(e2?.message || 'We couldn\u2019t resend the email. Please try again in a moment.', 'error');
               }
             }
           }
@@ -192,6 +198,6 @@ function setupAuthUI() {
 function showFatalError(msg) {
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;background:#101;z-index:999;color:white;padding:20px;font-family:sans-serif;text-align:center;';
-  el.innerHTML = `<div><h1>⚠️ Failed to load</h1><p>${msg}</p></div>`;
+  el.innerHTML = `<div><h1>\u26A0\uFE0F Failed to load</h1><p>${msg}</p></div>`;
   document.body.appendChild(el);
 }
