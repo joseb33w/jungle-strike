@@ -99,10 +99,10 @@ function renderArmory() {
       <div class="weapon-icon">${w.icon}</div>
       <h4>${w.name}</h4>
       <div class="stat-row">
-        <span>DMG ${w.damage}</span>
-        <span>MAG ${w.magazine}</span>
-        <span>RNG ${w.range}m</span>
-        ${w.auto ? '<span>AUTO</span>' : ''}
+        <span>Damage ${w.damage}</span>
+        <span>Magazine ${w.magazine}</span>
+        <span>Range ${w.range}m</span>
+        ${w.auto ? '<span>Auto</span>' : ''}
       </div>
       <div class="weapon-actions"></div>
     `;
@@ -132,7 +132,8 @@ function renderArmory() {
 
 async function purchaseWeapon(w) {
   if (Auth.profile.coins < w.cost) {
-    showToast(`Need ${w.cost - Auth.profile.coins} more coins.`);
+    const need = w.cost - Auth.profile.coins;
+    showToast(`You need ${need} more coin${need === 1 ? '' : 's'} to buy this.`);
     return;
   }
   const owned = [...(Auth.profile.owned_weapons || []), w.id];
@@ -142,7 +143,7 @@ async function purchaseWeapon(w) {
     equipped_weapon: w.id,
   });
   refreshLobby();
-  showToast(`${w.name} purchased & equipped!`);
+  showToast(`${w.name} purchased and equipped!`);
 }
 
 async function equipWeapon(w) {
@@ -227,11 +228,11 @@ async function fetchInvites() {
 async function sendInvite() {
   const input = document.getElementById('inviteUser');
   const target = (input.value || '').trim();
-  if (!target) return showToast('Enter a username.');
+  if (!target) return showToast('Please enter a username.');
   if (target === Auth.profile.username) return showToast("You can't invite yourself.");
   const { data: target_p } = await supabase
     .from(TABLES.profiles).select('username').eq('username', target).maybeSingle();
-  if (!target_p) return showToast('Username not found.');
+  if (!target_p) return showToast('We couldn\u2019t find that username.');
   await supabase.from(TABLES.worldInvites).insert({
     from_username: Auth.profile.username,
     to_username: target,
