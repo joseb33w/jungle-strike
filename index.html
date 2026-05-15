@@ -53,7 +53,10 @@
           </label>
 
           <label class="field">
-            <span class="field-label">Password</span>
+            <span class="field-label-row">
+              <span class="field-label">Password</span>
+              <a href="#" id="forgotLink" class="forgot-link">Forgot password?</a>
+            </span>
             <span class="field-input-wrap">
               <span class="field-icon" aria-hidden="true">⌬</span>
               <input type="password" id="authPassword" placeholder="At least 6 characters" required minlength="6" autocomplete="current-password" />
@@ -66,6 +69,7 @@
             <span class="btn-arrow">→</span>
           </button>
           <p id="authMessage" class="auth-msg" role="status" aria-live="polite"></p>
+          <div id="authActions" class="auth-actions" hidden></div>
         </form>
 
         <p class="auth-foot">Play fair, recruit. No cheats allowed.</p>
