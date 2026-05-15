@@ -1,8 +1,14 @@
 // =================================================================
-// Supabase client — uses the GLOBAL window.supabase that index.html
-// loads from a regular (non-module) <script> tag. This avoids the
-// ES-module CDN import chain that was failing to load in the preview
-// environment and blocking the entire app boot.
+// Supabase client wrapper.
+//
+// The inline auth script in index.html owns the real Supabase client.
+// It creates it from the UMD global (window.supabase) and then calls
+// setExternalSupabase(client) so the rest of the app shares the
+// SAME client instance (same session, same realtime channels).
+//
+// If for any reason the inline auth hasn't initialized yet, we lazily
+// build a client from the global window.supabase, so module-time
+// imports of `supabase` NEVER hang.
 // =================================================================
 
 export const SUPABASE_URL = 'https://xhhmxabftbyxrirvvihn.supabase.co';
@@ -16,7 +22,13 @@ export const TABLES = {
   worldChat: 'uNMexs7BYTXQ2_jungle_strike_world_chat',
 };
 
-function buildClient() {
+let _client = null;
+
+export function setExternalSupabase(client) {
+  if (client) _client = client;
+}
+
+function buildFromGlobal() {
   const g = (typeof window !== 'undefined') ? window : globalThis;
   if (g && g.supabase && typeof g.supabase.createClient === 'function') {
     return g.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -24,21 +36,17 @@ function buildClient() {
   return null;
 }
 
-// Try immediately; if the global isn't there yet, fall back to a proxy
-// that resolves the client lazily on first method call. This guarantees
-// `import { supabase } from './supabaseClient.js'` NEVER hangs at import
-// time, even if the supabase global script is still loading.
-let _client = buildClient();
-
 function ensureClient() {
   if (_client) return _client;
-  _client = buildClient();
+  _client = buildFromGlobal();
   if (!_client) {
-    throw new Error('Supabase library not loaded yet. Please refresh.');
+    throw new Error('Supabase client not initialized yet.');
   }
   return _client;
 }
 
+// Proxy so `import { supabase } from './supabaseClient.js'` never
+// hangs at import time — calls resolve lazily on first use.
 export const supabase = new Proxy({}, {
   get(_target, prop) {
     const c = ensureClient();
@@ -48,10 +56,11 @@ export const supabase = new Proxy({}, {
   },
 });
 
-// Helper: wait up to `ms` for the global library to appear.
+// Legacy helper kept for any caller that still imports it.
 export async function waitForSupabaseGlobal(ms = 8000) {
   const start = Date.now();
   while (Date.now() - start < ms) {
+    if (_client) return true;
     const g = (typeof window !== 'undefined') ? window : globalThis;
     if (g && g.supabase && typeof g.supabase.createClient === 'function') {
       if (!_client) _client = g.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
