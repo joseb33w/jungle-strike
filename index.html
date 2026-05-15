@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=15" />
+<link rel="stylesheet" href="styles.css?v=16" />
 <style>
   html, body { background: #06180c; }
   body::before {
@@ -236,8 +236,7 @@
   </script>
 
   <!-- ===================================================
-       2) THREE.js importmap — only used by game.js,
-       lazily loaded ONLY when you tap Deploy / Enter World.
+       2) THREE.js importmap — used by game.js
        =================================================== -->
   <script type="importmap">
   {
@@ -249,10 +248,6 @@
 
   <!-- ===================================================
        3) FULL APP — inline, non-module
-       AUTH + LOBBY + WORLD + LAUNCH. Zero module imports
-       to enter the lobby. game.js is loaded lazily on
-       Deploy / Enter World, with a friendly toast if it
-       fails — but the lobby itself ALWAYS works.
        =================================================== -->
   <script>
   (function () {
@@ -262,6 +257,7 @@
     var SUPABASE_URL = 'https://xhhmxabftbyxrirvvihn.supabase.co';
     var SUPABASE_ANON_KEY = 'sb_publishable_NZHoIxqqpSvVBP8MrLHCYA_gmg1AbN-';
     var EMAIL_REDIRECT = 'https://sling-gogiapp.web.app/email-confirmed.html';
+    var CACHE_V = '16';
 
     var TABLES = {
       profiles:     'uNMexs7BYTXQ2_jungle_strike_profiles',
@@ -293,6 +289,7 @@
     var presenceInterval = null;
     var invitesChannel = null;
     var gameModulePromise = null;
+    var lastGameLoadError = null;
 
     function $(id) { return document.getElementById(id); }
 
@@ -412,7 +409,7 @@
     }
     async function saveProfile(patch) {
       if (!sessionProfile || !sessionProfile.id) {
-        Object.assign(sessionProfile, patch);
+        Object.assign(sessionProfile || {}, patch);
         return;
       }
       var s = getSupabase();
@@ -504,7 +501,7 @@
       }
     }
 
-    /* ---------- ENTER LOBBY (inline, no module imports) ---------- */
+    /* ---------- ENTER LOBBY ---------- */
     function enterLobby() {
       $('authScreen').classList.remove('active');
       $('gameScreen').classList.remove('active');
@@ -760,8 +757,9 @@
     /* ---------- LAUNCH GAME (lazy load three.js + game.js) ---------- */
     function loadGameModule() {
       if (!gameModulePromise) {
-        gameModulePromise = import('./js/game.js?v=15').catch(function (err) {
+        gameModulePromise = import('./js/game.js?v=' + CACHE_V).catch(function (err) {
           console.error('[game] failed to load:', err);
+          lastGameLoadError = err;
           gameModulePromise = null;
           throw err;
         });
@@ -769,7 +767,7 @@
       return gameModulePromise;
     }
 
-    // Expose Auth-like API for game.js (which expects Auth.user / Auth.profile)
+    // Expose Auth-like API for game.js
     window.__JUNGLE_AUTH_BRIDGE = {
       get user()    { return sessionUser; },
       get profile() { return sessionProfile; },
@@ -777,6 +775,18 @@
       saveProfile: saveProfile,
       signOut: function(){ return getSupabase().auth.signOut(); },
     };
+
+    function gameLoadErrorMessage(err) {
+      var msg = (err && err.message) || 'Unknown error';
+      // Friendly summaries for the most common failures
+      if (/three/i.test(msg) && /resolve|specifier|module/i.test(msg))
+        return 'Game engine (three.js) failed to load from CDN.';
+      if (/Failed to fetch|Network/i.test(msg))
+        return 'Network blocked the game engine. Check your connection.';
+      if (/Importing a module script failed/i.test(msg))
+        return 'A game module failed to import. CDN may be blocked.';
+      return 'Game engine error: ' + msg;
+    }
 
     async function launchMission(mission) {
       showToast('Loading mission…');
@@ -786,10 +796,10 @@
         if (mod && typeof mod.startMission === 'function') {
           mod.startMission(mission, function () { enterLobby(); });
         } else {
-          showToast('Game engine missing startMission()');
+          showToast('Game engine missing startMission()', 4000);
         }
       } catch (err) {
-        showToast('Could not load game engine. Hard refresh and try again.');
+        showToast(gameLoadErrorMessage(err), 5000);
       }
     }
     async function enterWorld() {
@@ -800,10 +810,10 @@
         if (mod && typeof mod.startWorld === 'function') {
           mod.startWorld(function () { enterLobby(); });
         } else {
-          showToast('Game engine missing startWorld()');
+          showToast('Game engine missing startWorld()', 4000);
         }
       } catch (err) {
-        showToast('Could not load game engine. Hard refresh and try again.');
+        showToast(gameLoadErrorMessage(err), 5000);
       }
     }
 
@@ -907,7 +917,9 @@
     window.__JUNGLE_APP = {
       enterLobby: enterLobby,
       getSession: function () { return { user: sessionUser, profile: sessionProfile }; },
-      supabase: function () { return getSupabase(); }
+      supabase: function () { return getSupabase(); },
+      lastGameError: function () { return lastGameLoadError; },
+      reloadGame: function () { gameModulePromise = null; return loadGameModule(); }
     };
   })();
   </script>
