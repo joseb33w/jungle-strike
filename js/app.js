@@ -41,22 +41,33 @@ function setMessage(text, kind) {
   el.className = 'auth-msg' + (kind ? ' ' + kind : '');
 }
 
+function setSubmitLabel(text) {
+  const submitBtn = document.getElementById('authSubmit');
+  if (!submitBtn) return;
+  const label = submitBtn.querySelector('.btn-label');
+  if (label) label.textContent = text;
+  else submitBtn.textContent = text;
+}
+
 function setupAuthUI() {
+  const tabsContainer = document.querySelector('#authScreen .tabs');
   const tabs = document.querySelectorAll('#authScreen .tab');
   const usernameField = document.getElementById('usernameField');
-  const submitBtn = document.getElementById('authSubmit');
   let mode = 'signin';
+
+  // Initial indicator state
+  if (tabsContainer) tabsContainer.setAttribute('data-active', 'signin');
 
   tabs.forEach(t => {
     t.addEventListener('click', () => {
       tabs.forEach(x => x.classList.remove('active'));
       t.classList.add('active');
       mode = t.dataset.tab;
+      if (tabsContainer) tabsContainer.setAttribute('data-active', mode);
       usernameField.hidden = mode !== 'signup';
-      // Also toggle required on the username input itself
       const userInput = document.getElementById('authUsername');
       if (userInput) userInput.required = (mode === 'signup');
-      submitBtn.textContent = mode === 'signin' ? 'Sign In' : 'Create Account';
+      setSubmitLabel(mode === 'signin' ? 'Sign In' : 'Create Account');
       setMessage('');
     });
   });
@@ -68,7 +79,6 @@ function setupAuthUI() {
     const username = document.getElementById('authUsername').value.trim();
     const submit = document.getElementById('authSubmit');
 
-    // Basic client-side checks with friendly text
     if (!email) { setMessage('Please enter your email.', 'error'); return; }
     if (!pw) { setMessage('Please enter your password.', 'error'); return; }
     if (pw.length < 6) { setMessage('Password must be at least 6 characters.', 'error'); return; }
@@ -89,11 +99,9 @@ function setupAuthUI() {
       } else {
         const res = await Auth.signUp(email, pw, username);
         if (Auth.user && res?.session) {
-          // Signed up AND auto-signed-in
           setMessage('');
           enterApp();
         } else if (Auth.user && !res?.session) {
-          // Email confirmation required
           setMessage('Account created! Check your email to confirm, then sign in.', 'success');
         } else {
           setMessage('Account created. Please sign in.', 'success');
