@@ -41,6 +41,26 @@ function setMessage(text, kind) {
   el.className = 'auth-msg' + (kind ? ' ' + kind : '');
 }
 
+function setActions(actions) {
+  // actions: [{label, onClick}]
+  const wrap = document.getElementById('authActions');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!actions || !actions.length) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  actions.forEach(a => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'auth-action-btn';
+    b.textContent = a.label;
+    b.addEventListener('click', a.onClick);
+    wrap.appendChild(b);
+  });
+}
+
 function setSubmitLabel(text) {
   const submitBtn = document.getElementById('authSubmit');
   if (!submitBtn) return;
@@ -55,7 +75,6 @@ function setupAuthUI() {
   const usernameField = document.getElementById('usernameField');
   let mode = 'signin';
 
-  // Initial indicator state
   if (tabsContainer) tabsContainer.setAttribute('data-active', 'signin');
 
   tabs.forEach(t => {
@@ -69,8 +88,30 @@ function setupAuthUI() {
       if (userInput) userInput.required = (mode === 'signup');
       setSubmitLabel(mode === 'signin' ? 'Sign In' : 'Create Account');
       setMessage('');
+      setActions(null);
     });
   });
+
+  // Forgot password link
+  const forgotLink = document.getElementById('forgotLink');
+  if (forgotLink) {
+    forgotLink.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('authEmail').value.trim();
+      if (!email) {
+        setMessage('Enter your email above first, then tap Forgot password.', 'error');
+        return;
+      }
+      setMessage('Sending password reset link…', 'info');
+      try {
+        await Auth.sendPasswordReset(email);
+        setMessage(`Password reset email sent to ${email}. Check your inbox.`, 'success');
+        setActions(null);
+      } catch (err) {
+        setMessage(err?.message || 'Could not send reset email.', 'error');
+      }
+    });
+  }
 
   document.getElementById('authForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -78,6 +119,8 @@ function setupAuthUI() {
     const pw = document.getElementById('authPassword').value;
     const username = document.getElementById('authUsername').value.trim();
     const submit = document.getElementById('authSubmit');
+
+    setActions(null);
 
     if (!email) { setMessage('Please enter your email.', 'error'); return; }
     if (!pw) { setMessage('Please enter your password.', 'error'); return; }
@@ -102,14 +145,44 @@ function setupAuthUI() {
           setMessage('');
           enterApp();
         } else if (Auth.user && !res?.session) {
-          setMessage('Account created! Check your email to confirm, then sign in.', 'success');
+          setMessage(`Account created! We sent a confirmation link to ${email}. Click it, then come back and sign in.`, 'success');
+          setActions([
+            { label: 'Resend confirmation email', onClick: async () => {
+                setMessage('Resending confirmation email…', 'info');
+                try {
+                  await Auth.resendConfirmation(email);
+                  setMessage(`Confirmation email re-sent to ${email}. Check your inbox & spam folder.`, 'success');
+                } catch (err) {
+                  setMessage(err?.message || 'Could not resend.', 'error');
+                }
+              }
+            }
+          ]);
         } else {
           setMessage('Account created. Please sign in.', 'success');
         }
       }
     } catch (err) {
-      setMessage(err?.message || 'Something went wrong. Please try again.', 'error');
+      const msg = err?.message || 'Something went wrong. Please try again.';
+      setMessage(msg, 'error');
       console.error('Auth submit error:', err);
+
+      // If the failure is "email not confirmed", offer a Resend button right
+      // in the error banner area so the user can fix it in one tap.
+      if (err?.code === 'email_not_confirmed') {
+        setActions([
+          { label: 'Resend confirmation email', onClick: async () => {
+              setMessage('Resending confirmation email…', 'info');
+              try {
+                await Auth.resendConfirmation(email);
+                setMessage(`Confirmation email re-sent to ${email}. Tap the link inside, then try signing in again.`, 'success');
+              } catch (e2) {
+                setMessage(e2?.message || 'Could not resend.', 'error');
+              }
+            }
+          }
+        ]);
+      }
     } finally {
       submit.disabled = false;
     }
