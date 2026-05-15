@@ -296,6 +296,27 @@ html, body, .screen, .scrollable {
   opacity: 0.85;
   padding-left: 4px;
 }
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.forgot-link {
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+  transition: opacity 150ms ease, color 150ms ease;
+  padding-right: 4px;
+}
+.forgot-link:hover {
+  opacity: 1;
+  color: var(--bone);
+  text-decoration: underline;
+}
 
 .field-input-wrap {
   position: relative;
@@ -406,6 +427,7 @@ html, body, .screen, .scrollable {
   border-radius: 10px;
   text-align: center;
   display: none;
+  line-height: 1.4;
 }
 .auth-msg:not(:empty) { display: block; }
 .auth-msg.info {
@@ -423,6 +445,33 @@ html, body, .screen, .scrollable {
   border: 1px solid rgba(255,77,94,0.3);
   color: #ff9aa3;
 }
+
+/* Inline action buttons (e.g. Resend confirmation) */
+.auth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.auth-actions[hidden] { display: none; }
+.auth-action-btn {
+  background: rgba(200,255,93,0.12);
+  border: 1px solid rgba(200,255,93,0.3);
+  color: var(--accent);
+  padding: 11px 16px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+.auth-action-btn:hover {
+  background: rgba(200,255,93,0.2);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.auth-action-btn:active { transform: translateY(0) scale(0.98); }
 
 .auth-foot {
   margin: 18px 0 0;
