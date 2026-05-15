@@ -68,13 +68,13 @@ export function startMission(mission, exitCallback) {
   setMissionHUD(mission);
   if (mission.id === 'survival') {
     spawnWave(mission.waves[0]);
-    setObjective(`Wave 1 / ${mission.waves.length} — Hold the line`);
+    setObjective(`Wave 1 of ${mission.waves.length} — Hold the line`);
   } else if (mission.id === 'boss') {
     spawnEnemies(mission.enemies, mission.enemyHealth, mission.enemySpeed);
-    setObjective(`Eliminate guards · ${mission.enemies} left`);
+    setObjective(`Take out the guards · ${mission.enemies} left`);
   } else {
     spawnEnemies(mission.enemies, mission.enemyHealth, mission.enemySpeed);
-    setObjective(`Targets remaining: ${mission.enemies}`);
+    setObjective(`Enemies left: ${mission.enemies}`);
   }
 
   attachInput();
@@ -109,7 +109,7 @@ export function startWorld(exitCallback) {
   };
 
   buildWeaponView();
-  setMissionHUD({ name: 'Open World', objective: 'Eliminate enemies & hold the flag' });
+  setMissionHUD({ name: 'Open World', objective: 'Take out enemies and capture the flag' });
   setObjective('Capture the flag at center for bonus coins!');
   spawnEnemies(WORLD_CONFIG.enemyBots, WORLD_CONFIG.botHealth, WORLD_CONFIG.botSpeed);
 
@@ -204,7 +204,7 @@ function spawnEnemies(count, health, speed) {
 }
 
 function spawnWave(wave) {
-  setObjective(`Wave ${gameState.waveIndex + 1} — ${wave.count} hostiles incoming`);
+  setObjective(`Wave ${gameState.waveIndex + 1} — ${wave.count} enemies coming`);
   for (let i = 0; i < wave.count; i++) spawnEnemy(wave.health, wave.speed);
 }
 
@@ -563,7 +563,7 @@ function update(dt) {
   if (gameState.mode === 'mission') {
     const m = gameState.mission;
     if (m.id === 'recon') {
-      setObjective(`Targets remaining: ${aliveEnemies}`);
+      setObjective(`Enemies left: ${aliveEnemies}`);
       if (aliveEnemies === 0) endGame(true);
     } else if (m.id === 'boss') {
       const guardsAlive = enemies.filter(e => !e.dead && !e.boss).length;
@@ -571,11 +571,11 @@ function update(dt) {
       if (guardsAlive === 0 && !gameState.bossSpawned) {
         gameState.bossSpawned = true;
         spawnEnemy(0, 0, 0, { boss: true, bossHealth: m.boss.health, bossDamage: m.boss.damage, bossSpeed: m.boss.speed });
-        setObjective(`⚠️ WARLORD APPROACHING`);
+        setObjective(`\u26A0\uFE0F The warlord is here!`);
       } else if (gameState.bossSpawned && !bossAlive) {
         endGame(true);
       } else if (gameState.bossSpawned) {
-        setObjective(`Warlord HP: ${Math.max(0, Math.round(bossAlive?.health || 0))}`);
+        setObjective(`Warlord health: ${Math.max(0, Math.round(bossAlive?.health || 0))}`);
       } else {
         setObjective(`Guards left: ${guardsAlive}`);
       }
@@ -588,7 +588,7 @@ function update(dt) {
           spawnWave(m.waves[gameState.waveIndex]);
         }
       } else {
-        setObjective(`Wave ${gameState.waveIndex + 1}/${m.waves.length} · ${aliveEnemies} hostiles`);
+        setObjective(`Wave ${gameState.waveIndex + 1}/${m.waves.length} \u00b7 ${aliveEnemies} enemies left`);
       }
     }
   } else if (gameState.mode === 'world') {
@@ -617,7 +617,7 @@ function checkPickups() {
       gameState.reserve = before + gameState.weapon.magazine * 3;
       c.used = true;
       c.cooldownUntil = now + 15000;
-      flashPickup('🔫 +Ammo crate restocked');
+      flashPickup('🔫 Ammo crate picked up');
     }
   }
 
@@ -659,7 +659,7 @@ function updateCaptureFlag(dt) {
       setObjective(`🚩 Capturing flag… ${Math.round(gameState.captureProgress)}%`);
     }
   } else if (d < f.radius && enemiesNear) {
-    setObjective(`⚠️ Enemies near flag — clear them out!`);
+    setObjective(`\u26A0\uFE0F Enemies near the flag — clear them out!`);
   } else if (gameState.captureProgress > 0) {
     gameState.captureProgress = Math.max(0, gameState.captureProgress - dt * 8);
   }
@@ -850,7 +850,7 @@ function explodeBarrel(b) {
     flashHit();
     if (gameState.health <= 0) endGame(false);
   }
-  flashPickup('💥 Barrel detonated');
+  flashPickup('💥 Barrel exploded');
 }
 
 function onEnemyKilled(e) {
@@ -860,7 +860,7 @@ function onEnemyKilled(e) {
     : (gameState.mission.rewardPerKill || 10);
   const bonus = e.boss ? 200 : 0;
   gameState.coinsEarned += reward + bonus;
-  feedKill(e.boss ? '☠️ WARLORD ELIMINATED' : '🎯 Hostile down');
+  feedKill(e.boss ? '☠️ Warlord defeated!' : '🎯 Enemy down');
 
   if (!e.boss && Math.random() < 0.18 && worldProps) {
     spawnDroppedMedkit(e.mesh.position.x, e.mesh.position.z);
@@ -999,11 +999,11 @@ async function endGame(victory, aborted = false) {
 
   const ov = document.getElementById('gameOverlay');
   document.getElementById('overlayTitle').textContent = aborted
-    ? 'Mission Aborted'
-    : (victory ? '🏆 Victory' : '💀 You were eliminated');
+    ? 'Mission Ended'
+    : (victory ? '🏆 Victory!' : '💀 You were taken down');
   document.getElementById('overlaySub').textContent = aborted
-    ? 'You retreated to base.'
-    : (victory ? 'Outstanding work, operative.' : 'Better luck next deployment.');
+    ? 'You headed back to the menu.'
+    : (victory ? 'Great job out there!' : 'Try again — you got this.');
   document.getElementById('resKills').textContent = gameState.kills;
   document.getElementById('resCoins').textContent = totalCoins;
   document.getElementById('resTime').textContent = dur + 's';
@@ -1146,7 +1146,7 @@ function renderRemote(p) {
   if (!scene) return;
   let m = remoteMeshes.get(p.user_id);
   if (!m) {
-    m = makeRemoteMesh(p.username || 'agent');
+    m = makeRemoteMesh(p.username || 'Player');
     scene.add(m);
     remoteMeshes.set(p.user_id, m);
   }
